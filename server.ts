@@ -1,10 +1,6 @@
 import dotenv from "dotenv";
 import path from "path";
-
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-
-import express from "express";
-import type { Request, Response, NextFunction } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import multer from "multer";
 import { Pool } from "pg";
@@ -15,12 +11,16 @@ import { sendEmail } from "./services/sendEmail.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+
+// ---------- Setup Express ----------
 const app = express();
 const port = process.env.PORT || 5000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ---------- Async Import CloudConvert ----------
 let convertDocxToPdf: any;
 (async () => {
   ({ convertDocxToPdf } = await import("./services/cloudconvert.js"));
