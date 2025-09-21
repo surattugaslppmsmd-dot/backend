@@ -7,6 +7,7 @@
     "start": "node dist/server.js",
     "dev": "nodemon --watch . --ext ts --exec ts-node --esm server.ts",
     "build": "tsc && npm run copy-templates",
+    "postinstall": "npm run build",
     "copy-templates": "node scripts/copy-templates.cjs"
   },
   "keywords": [],
