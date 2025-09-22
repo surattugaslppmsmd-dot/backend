@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node dist/server.js",
+    "start": "node server.ts",
     "dev": "nodemon --watch . --ext ts --exec ts-node --esm server.ts",
     "build": "tsc && npm run copy-templates",
     "postinstall": "npm run build",
