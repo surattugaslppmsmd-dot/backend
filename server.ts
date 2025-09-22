@@ -379,8 +379,8 @@ app.post(
           }
         }
         const anggotaRows = await pool.query(
-          `SELECT nama, nidn, FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
-          [config.table, record.id]
+          `SELECT nama, nidn, idsinta_anggota FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
+        [config.table, record.id]
         );
         anggotaSaved = anggotaRows.rows.map((r) => ({ name: r.nama, nidn: r.nidn, idsintaAnggota: r.idsinta_anggota }));
       }
