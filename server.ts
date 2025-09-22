@@ -127,21 +127,18 @@ const getAllFromTable = async (tableName: string) => {
   const result = await pool.query(`SELECT * FROM ${tableName} ORDER BY id DESC`);
   return result.rows;
 };
-
-// ----------------- ENDPOINTS -----------------
-
 // Halaman Pengesahan
-app.get("/api/anggota-surat", async (req: Request, res: Response) => {
+app.get("/api/anggota-surat", async (req, res) => {
   try {
     const data = await getAllFromTable("anggota_surat");
     res.json(data);
   } catch (err) {
-    console.error("Error fetching Anggota :", err);
+    console.error("Error fetching Anggota:", err);
     res.status(500).json({ message: "Gagal mengambil data Anggota" });
   }
 });
 
-app.get("/api/halaman-pengesahan", async (req: Request, res: Response) => {
+app.get("/api/halaman-pengesahan", async (req, res) => {
   try {
     const data = await getAllFromTable("halaman_pengesahan");
     res.json(data);
@@ -151,8 +148,7 @@ app.get("/api/halaman-pengesahan", async (req: Request, res: Response) => {
   }
 });
 
-// Surat Tugas Buku
-app.get("/api/surat-tugas-buku", async (req: Request, res: Response) => {
+app.get("/api/surat-tugas-buku", async (req, res) => {
   try {
     const data = await getAllFromTable("surat_tugas_buku");
     res.json(data);
@@ -162,8 +158,7 @@ app.get("/api/surat-tugas-buku", async (req: Request, res: Response) => {
   }
 });
 
-// Surat Tugas HKI
-app.get("/api/surat-tugas-hki", async (req: Request, res: Response) => {
+app.get("/api/surat-tugas-hki", async (req, res) => {
   try {
     const data = await getAllFromTable("surat_tugas_hki");
     res.json(data);
@@ -173,8 +168,7 @@ app.get("/api/surat-tugas-hki", async (req: Request, res: Response) => {
   }
 });
 
-// Surat Tugas Penelitian
-app.get("/api/surat-tugas-penelitian", async (req: Request, res: Response) => {
+app.get("/api/surat-tugas-penelitian", async (req, res) => {
   try {
     const data = await getAllFromTable("surat_tugas_penelitian");
     res.json(data);
@@ -184,8 +178,7 @@ app.get("/api/surat-tugas-penelitian", async (req: Request, res: Response) => {
   }
 });
 
-// Surat Tugas PKM
-app.get("/api/surat-tugas-pkm", async (req: Request, res: Response) => {
+app.get("/api/surat-tugas-pkm", async (req, res) => {
   try {
     const data = await getAllFromTable("surat_tugas_pkm");
     res.json(data);
@@ -194,7 +187,6 @@ app.get("/api/surat-tugas-pkm", async (req: Request, res: Response) => {
     res.status(500).json({ message: "Gagal mengambil data Surat Tugas PKM" });
   }
 });
-
 
 // ---------- Utility ----------
 function validateFields(data: any, requiredFields: string[]): string[] {
