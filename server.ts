@@ -352,22 +352,22 @@ app.post(
       const record = result.rows[0];
 
       // ---------- Simpan anggota ----------
-      let anggotaSaved: { name: string; nidn: string }[] = [];
+      let anggotaSaved: { name: string; nidn: string; idsintaAnggota :string}[] = [];
       if (Array.isArray(anggota) && anggota.length > 0) {
         for (const a of anggota) {
-          if (a?.name && a?.nidn) {
+          if (a?.name && a?.nidn && a?.idsintaAnggota) {
             await pool.query(
-              `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn)
-               VALUES ($1,$2,$3,$4)`,
-              [config.table, record.id, a.name, a.nidn]
+              `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsinta_anggota )
+               VALUES ($1,$2,$3,$4,$5)`,
+              [config.table, record.id, a.name, a.nidn, a.idsintaAnggota]
             );
           }
         }
         const anggotaRows = await pool.query(
-          `SELECT nama, nidn FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
+          `SELECT nama, nidn, FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
           [config.table, record.id]
         );
-        anggotaSaved = anggotaRows.rows.map((r) => ({ name: r.nama, nidn: r.nidn }));
+        anggotaSaved = anggotaRows.rows.map((r) => ({ name: r.nama, nidn: r.nidn, idsintaAnggota: r.idsinta_anggota }));
       }
 
       // ---------- Generate DOCX ----------
