@@ -30,7 +30,8 @@ const outputDir = isVercel ? "/tmp/output" : path.join(__dirname, "output");
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+
 const { data } = supabase.storage
   .from("uploads")
   .getPublicUrl("namafile.pdf");
@@ -39,6 +40,9 @@ for (const dir of [uploadDir, outputDir]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Supabase URL atau Key belum diatur. Periksa environment variables.');
+}
 
 let convertDocxToPdf: any;
 (async () => {
@@ -133,10 +137,8 @@ async function uploadPdf(filePath: string) {
   const fileName = filePath.split("/").pop();
   const { data, error } = await supabase.storage
     .from("uploads")
-    .upload(fileName!, fs.readFileSync(filePath), {
-      contentType: "application/pdf",
-      upsert: true, // overwrite jika ada
-    });
+    .upload(fileName!, fs.readFileSync(filePath), { contentType: "application/pdf", upsert: true });
+
   if (error) throw error;
   console.log("File uploaded:", data);
 }
