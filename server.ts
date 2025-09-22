@@ -39,17 +39,18 @@ let convertDocxToPdf: any;
 function ensureDirSync(p: string) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
-ensureDirSync(path.join(__dirname, "/tmp/uploads"));
-ensureDirSync(path.join(__dirname, "/tmp/output"));
+ensureDirSync(uploadDir);
+ensureDirSync(outputDir);
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/tmp/uploads", express.static(path.join(__dirname, "/tmp/uploads")));
+app.use("/uploads", express.static(uploadDir));
 
 // ---------- Multer ----------
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, "/tmp/uploads")),
+  destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, `${Date.now()}_${file.originalname}`),
 });
 const upload = multer({
