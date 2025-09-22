@@ -27,9 +27,14 @@ app.get('/api', (req, res) => res.send('API works!'));
 const __dirname = path.dirname(__filename);
 const uploadDir = isVercel ? "/tmp/uploads" : path.join(__dirname, "uploads");
 const outputDir = isVercel ? "/tmp/output" : path.join(__dirname, "output");
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
-
+const { data } = supabase.storage
+  .from("uploads")
+  .getPublicUrl("namafile.pdf");
+  
 for (const dir of [uploadDir, outputDir]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
