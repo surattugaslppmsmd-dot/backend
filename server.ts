@@ -93,21 +93,27 @@ function verifyJWT(req: AuthRequest, res: Response, next: NextFunction) {
     next();
   });
 }
-
 // ---------------- LOGIN ADMIN ----------------
 app.post("/api/admin-login", async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: "Username/Password kosong" });
+    const username = req.body.username?.trim();
+    const password = req.body.password?.trim();
+    if (!username || !password) {
+      return res.status(400).json({ message: "Username dan Password wajib diisi" });
+    }
 
     const result = await pool.query("SELECT * FROM admin WHERE username = $1", [username]);
-    if (result.rows.length === 0) return res.status(401).json({ message: "Username tidak ditemukan" });
+    if (result.rows.length === 0) {
+      return res.status(401).json({ message: "Username tidak ditemukan" });
+    }
 
     const user = result.rows[0];
     const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) return res.status(401).json({ message: "Password salah" });
+    if (!match) {
+      return res.status(401).json({ message: "Password salah" });
+    }
 
-    const token = generateToken({ username: user.username });
+    const token = generateToken({ username: user.username }, 3600);
     res.json({ token, expiresIn: 3600 });
   } catch (err) {
     console.error("Login error:", err);
