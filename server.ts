@@ -401,24 +401,27 @@ app.post(
       }
 
       // ---------- Generate DOCX ----------
-      const mappedData = config.mapFn(record, anggotaSaved);
-      const docxPath = await generateDocx(config.template, mappedData);
+const mappedData = config.mapFn(record, anggotaSaved);
+const docxPath = await generateDocx(config.template, mappedData);
 
-      // ---------- Convert to PDF via CloudConvert ----------
-      const pdfPath = await convertDocxToPdf(docxPath);
+// ---------- Upload DOCX ke Supabase ----------
+let fileUrl: string | null = null;
+if (docxPath) {
+  const fileBuffer = fs.readFileSync(docxPath);
+  const fileName = path.basename(docxPath);
 
-      // Hapus DOCX setelah konversi
-      try {
-        fs.unlinkSync(docxPath);
-      } catch (err) {
-        console.warn("Gagal hapus DOCX:", err);
-      }
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from("uploads")
+    .upload(fileName, fileBuffer, {
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      upsert: true,
+    });
 
-      // ---------- Upload PDF ke Supabase ----------
-      let fileUrl: string | null = null;
-      if (pdfPath) {
-        fileUrl = await uploadPdfToSupabase(pdfPath);
-      }
+  if (uploadError) throw uploadError;
+
+  const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(fileName);
+  fileUrl = urlData.publicUrl;
+}
 
       // ---------- Update file_url di DB ----------
       if (fileUrl) {
@@ -435,7 +438,7 @@ Terima kasih telah mengisi form. Silakan lihat lampiran PDF.
 Untuk nomor surat, hubungi:
 - Ritria Novidyanti, S.Pd (+62 852-4763-6399)`;
 
-      await sendEmail(penerima, config.emailSubject, pdfPath, emailBody);
+      await sendEmail(penerima, config.emailSubject, docxPath, emailBody);
 
       // ---------- Response ke frontend ----------
       res.json({
