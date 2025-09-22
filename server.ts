@@ -133,15 +133,24 @@ app.post("/api/admin-login", async (req: Request, res: Response) => {
 });
 
 
-async function uploadPdf(filePath: string) {
-  const fileName = filePath.split("/").pop();
-  const { data, error } = await supabase.storage
-    .from("uploads")
-    .upload(fileName!, fs.readFileSync(filePath), { contentType: "application/pdf", upsert: true });
+// ---------- Upload PDF ke Supabase ----------
+async function uploadPdfToSupabase(filePath: string): Promise<string> {
+  const fileName = `${Date.now()}_${filePath.split("/").pop()}`;
+  const fileBuffer = fs.readFileSync(filePath);
 
-  if (error) throw error;
-  console.log("File uploaded:", data);
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from("uploads")
+    .upload(fileName, fileBuffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(fileName);
+  return urlData.publicUrl;
 }
+
 
 // Helper untuk ambil semua data dari tabel
 const getAllFromTable = async (tableName: string) => {
@@ -336,13 +345,13 @@ app.post(
   async (req: Request, res: Response) => {
     const { formType } = req.params;
     const config = formTableMap[formType];
-    if (!config) {
-      return res.status(400).json({ success: false, message: "FormType tidak valid" });
-    }
+    if (!config)
+      return res
+        .status(400)
+        .json({ success: false, message: "FormType tidak valid" });
 
     let { anggota, ...formData } = req.body as any;
 
-    // Parse anggota jika dikirim string JSON
     if (typeof anggota === "string") {
       try {
         anggota = anggota ? JSON.parse(anggota) : [];
@@ -351,41 +360,30 @@ app.post(
       }
     }
 
-    const file_url = req.file ? `/uploads/${req.file.filename}` : null;
-
-    // Validasi field wajib
-    const emptyFields = validateFields(formData, config.requiredFields);
-    if (emptyFields.length) {
-      return res.status(400).json({
-        success: false,
-        message: `Field belum terisi: ${emptyFields.join(", ")}`,
-      });
-    }
-
     try {
-      // ---------- Simpan ke DB ----------
+      // ---------- Simpan data ke DB ----------
       const safeFormData: Record<string, any> = {};
       for (const k of Object.keys(formData)) {
         const v = formData[k];
         if (v !== undefined) safeFormData[k] = v;
       }
-      if (file_url) safeFormData["file_url"] = file_url;
 
       const columns = Object.keys(safeFormData);
       const values = Object.values(safeFormData);
       const placeholders = columns.map((_, i) => `$${i + 1}`);
-      const insertQuery = `INSERT INTO ${config.table} (${columns.join(", ")})
-                           VALUES (${placeholders.join(", ")}) RETURNING *`;
+      const insertQuery = `INSERT INTO ${config.table} (${columns.join(
+        ", "
+      )}) VALUES (${placeholders.join(", ")}) RETURNING *`;
       const result = await pool.query(insertQuery, values);
       const record = result.rows[0];
 
       // ---------- Simpan anggota ----------
-      let anggotaSaved: { name: string; nidn: string; idsintaAnggota :string}[] = [];
+      let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
       if (Array.isArray(anggota) && anggota.length > 0) {
         for (const a of anggota) {
           if (a?.name && a?.nidn && a?.idsintaAnggota) {
             await pool.query(
-              `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsinta_anggota )
+              `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsinta_anggota)
                VALUES ($1,$2,$3,$4,$5)`,
               [config.table, record.id, a.name, a.nidn, a.idsintaAnggota]
             );
@@ -393,9 +391,13 @@ app.post(
         }
         const anggotaRows = await pool.query(
           `SELECT nama, nidn, idsinta_anggota FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
-        [config.table, record.id]
+          [config.table, record.id]
         );
-        anggotaSaved = anggotaRows.rows.map((r) => ({ name: r.nama, nidn: r.nidn, idsintaAnggota: r.idsinta_anggota }));
+        anggotaSaved = anggotaRows.rows.map((r) => ({
+          name: r.nama,
+          nidn: r.nidn,
+          idsintaAnggota: r.idsinta_anggota,
+        }));
       }
 
       // ---------- Generate DOCX ----------
@@ -412,6 +414,20 @@ app.post(
         console.warn("Gagal hapus DOCX:", err);
       }
 
+      // ---------- Upload PDF ke Supabase ----------
+      let fileUrl: string | null = null;
+      if (pdfPath) {
+        fileUrl = await uploadPdfToSupabase(pdfPath);
+      }
+
+      // ---------- Update file_url di DB ----------
+      if (fileUrl) {
+        await pool.query(`UPDATE ${config.table} SET file_url=$1 WHERE id=$2`, [
+          fileUrl,
+          record.id,
+        ]);
+      }
+
       // ---------- Kirim Email ----------
       const penerima = formData.email || record.email || "";
       const emailBody = `Kepada ${formData.nama_ketua || "Bapak/Ibu"},
@@ -421,9 +437,11 @@ Untuk nomor surat, hubungi:
 
       await sendEmail(penerima, config.emailSubject, pdfPath, emailBody);
 
+      // ---------- Response ke frontend ----------
       res.json({
         success: true,
         message: "Form berhasil disubmit, PDF dibuat & email terkirim.",
+        file_url: fileUrl,
         id: record.id,
       });
     } catch (err) {
