@@ -4,7 +4,7 @@ import path from "path";
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
-
+import { createClient } from "@supabase/supabase-js";
 
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
@@ -27,6 +27,8 @@ app.get('/api', (req, res) => res.send('API works!'));
 const __dirname = path.dirname(__filename);
 const uploadDir = isVercel ? "/tmp/uploads" : path.join(__dirname, "uploads");
 const outputDir = isVercel ? "/tmp/output" : path.join(__dirname, "output");
+
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
 
 for (const dir of [uploadDir, outputDir]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -121,6 +123,18 @@ app.post("/api/admin-login", async (req: Request, res: Response) => {
   }
 });
 
+
+async function uploadPdf(filePath: string) {
+  const fileName = filePath.split("/").pop();
+  const { data, error } = await supabase.storage
+    .from("uploads")
+    .upload(fileName!, fs.readFileSync(filePath), {
+      contentType: "application/pdf",
+      upsert: true, // overwrite jika ada
+    });
+  if (error) throw error;
+  console.log("File uploaded:", data);
+}
 
 // Helper untuk ambil semua data dari tabel
 const getAllFromTable = async (tableName: string) => {
