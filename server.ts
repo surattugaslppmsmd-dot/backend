@@ -4,6 +4,8 @@ import path from "path";
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
+
+
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import cors from "cors";
@@ -17,10 +19,11 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 
 const app = express();
+const handler = (req: any, res: any) => app(req, res);
 const port = process.env.PORT || 5000;
 const isVercel = process.env.VERCEL === "1";
 const __filename = fileURLToPath(import.meta.url);
-
+app.get('/api', (req, res) => res.send('API works!'));
 const __dirname = path.dirname(__filename);
 const uploadDir = isVercel ? "/tmp/uploads" : path.join(__dirname, "uploads");
 const outputDir = isVercel ? "/tmp/output" : path.join(__dirname, "output");
