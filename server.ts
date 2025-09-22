@@ -27,27 +27,46 @@ app.get('/api', (req, res) => res.send('API works!'));
 const __dirname = path.dirname(__filename);
 const uploadDir = isVercel ? "/tmp/uploads" : path.join(__dirname, "uploads");
 const outputDir = isVercel ? "/tmp/output" : path.join(__dirname, "output");
+
 const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+// Validasi variabel environment
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error("Supabase URL atau Service Role Key belum diatur. Periksa environment variables.");
+}
 
-const { data } = supabase.storage
-  .from("uploads")
-  .getPublicUrl("namafile.pdf");
-  
+// --- Init Supabase Client ---
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// --- Pastikan folder lokal ada (kalau dipakai sementara sebelum upload) ---
 for (const dir of [uploadDir, outputDir]) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Supabase URL atau Key belum diatur. Periksa environment variables.');
+// --- Upload file DOCX ke Storage ---
+async function uploadFileToSupabase(filePath: string, storagePath: string) {
+  const fileBuffer = fs.readFileSync(filePath);
+
+  const { data, error } = await supabase.storage
+    .from("uploads") // bucket name
+    .upload(storagePath, fileBuffer, {
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      upsert: true, // kalau sudah ada, replace
+    });
+
+  if (error) throw error;
+
+  // Ambil public URL untuk kirim lewat email
+  const { data: publicUrlData } = supabase.storage
+    .from("uploads")
+    .getPublicUrl(storagePath);
+
+  return publicUrlData.publicUrl;
 }
 
-let convertDocxToPdf: any;
-(async () => {
-  ({ convertDocxToPdf } = await import("./services/cloudconvert.js"));
-})();
 
 // ---------- Ensure Directories ----------
 function ensureDirSync(p: string) {
@@ -151,6 +170,17 @@ async function uploadPdfToSupabase(filePath: string): Promise<string> {
   return urlData.publicUrl;
 }
 
+(async () => {
+  try {
+    const publicUrl = await uploadFileToSupabase(
+      `${outputDir}/namafile.docx`, // path lokal
+      `dokumen/namafile.docx` // path di bucket
+    );
+    console.log("Public URL:", publicUrl);
+  } catch (err) {
+    console.error("Upload gagal:", err);
+  }
+})();
 
 // Helper untuk ambil semua data dari tabel
 const getAllFromTable = async (tableName: string) => {
