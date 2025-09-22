@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import fs from "fs";
 import path from "path";
 
 export async function sendEmail(
@@ -15,6 +16,8 @@ export async function sendEmail(
     },
   });
 
+  const pdfBuffer = fs.readFileSync(pdfPath);
+
   await transporter.sendMail({
     from: '"LPPM UNTAG Samarinda" <surattugaslppmsmd@gmail.com>',
     to,
@@ -23,7 +26,8 @@ export async function sendEmail(
     attachments: [
       {
         filename: path.basename(pdfPath),
-        path: pdfPath,
+        content: pdfBuffer,
+        contentType: "application/pdf",
       },
     ],
   });
