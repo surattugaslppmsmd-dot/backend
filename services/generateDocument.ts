@@ -7,6 +7,12 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Gunakan folder /tmp jika di Vercel
+const isVercel = process.env.VERCEL === "1";
+const outputDir = isVercel
+  ? "/tmp/output"
+  : path.join(__dirname, "..", "output");
+
 export async function generateDocx(
   templateFile: string,
   data: Record<string, any>
@@ -17,17 +23,14 @@ export async function generateDocx(
     throw new Error(`Template file tidak ditemukan: ${templatePath}`);
   }
 
-  // Load template DOCX
   const content = fs.readFileSync(templatePath, "binary");
   const zip = new PizZip(content);
-
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
     linebreaks: true,
     delimiters: { start: "<<", end: ">>" },
   });
 
-  // Jika ada anggota array
   if (data.anggota && Array.isArray(data.anggota)) {
     data.anggota = data.anggota.map(a => ({ name: a.name, nidn: a.nidn }));
   }
@@ -41,9 +44,10 @@ export async function generateDocx(
 
   const buf = doc.getZip().generate({ type: "nodebuffer" });
 
-  // Simpan file DOCX
-  const outputDir = path.join(__dirname, "..", "output");
-  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+  // Pastikan folder ada
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
 
   const docxPath = path.join(outputDir, `${Date.now()}.docx`);
   fs.writeFileSync(docxPath, buf);
