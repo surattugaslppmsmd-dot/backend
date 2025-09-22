@@ -417,4 +417,4 @@ Untuk nomor surat, hubungi:
   }
 );
 
-export default app;
+export default handler;
