@@ -48,8 +48,11 @@ export async function generateDocx(
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
+const safeTitle = data.judul
+  ? data.judul.replace(/[^a-z0-9_\-]/gi, "_") 
+  : "output";
 
-  const docxPath = path.join(outputDir, `${Date.now()}.docx`);
+  const docxPath = path.join(outputDir, `${safeTitle}.docx`);
   fs.writeFileSync(docxPath, buf);
 
   return docxPath;
