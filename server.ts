@@ -1,8 +1,9 @@
 import dotenv from "dotenv";
 import path from "path";
 
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import cors from "cors";
@@ -17,9 +18,17 @@ import bcrypt from "bcrypt";
 
 const app = express();
 const port = process.env.PORT || 5000;
-
+const isVercel = process.env.VERCEL === "1";
 const __filename = fileURLToPath(import.meta.url);
+
 const __dirname = path.dirname(__filename);
+const uploadDir = isVercel ? "/tmp/uploads" : path.join(__dirname, "uploads");
+const outputDir = isVercel ? "/tmp/output" : path.join(__dirname, "output");
+
+for (const dir of [uploadDir, outputDir]) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
 
 let convertDocxToPdf: any;
 (async () => {
@@ -30,17 +39,17 @@ let convertDocxToPdf: any;
 function ensureDirSync(p: string) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
-ensureDirSync(path.join(__dirname, "uploads"));
-ensureDirSync(path.join(__dirname, "output"));
+ensureDirSync(path.join(__dirname, "/tmp/uploads"));
+ensureDirSync(path.join(__dirname, "/tmp/output"));
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/tmp/uploads", express.static(path.join(__dirname, "/tmp/uploads")));
 
 // ---------- Multer ----------
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, "uploads")),
+  destination: (req, file, cb) => cb(null, path.join(__dirname, "/tmp/uploads")),
   filename: (req, file, cb) => cb(null, `${Date.now()}_${file.originalname}`),
 });
 const upload = multer({
@@ -398,7 +407,4 @@ Untuk nomor surat, hubungi:
   }
 );
 
-// ---------- Start Server ----------
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+export default app;
