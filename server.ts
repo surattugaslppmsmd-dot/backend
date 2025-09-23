@@ -206,6 +206,7 @@ const formTableMap: Record<
     mapFn: (row, anggota) => ({
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
+      JabatanFungsional: row.jabatan || "",
       Judul: row.judul || "",
       JenisBuku: row.jenis_buku || "",
       PenerbitBuku: row.penerbit_buku || "",
@@ -223,7 +224,8 @@ const formTableMap: Record<
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
       JudulCiptaan: row.judul_ciptaan || "",
-      JenisHKI: row.jenis_hki || "",
+      JenisHakCipta: row.jenis_hki || "",
+      No_Tanggal_Permohonan: row.tanggal_permohonan ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
       Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
       anggota: anggota || [],
     }),
@@ -235,8 +237,10 @@ const formTableMap: Record<
   SuratTugasPenelitian: {
     table: "surat_tugas_penelitian",
     mapFn: (row, anggota) => ({
+      TahunPengajuan: row.tanggal_pengajuan ? new Date (row.tanggal_pengajuan).getFullYear().toString(): "",
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
+      JabatanFungsional: row.jabatan || "",
       Fakultas: row.fakultas || "",
       Prodi: row.prodi || "",
       Judul: row.judul || "",
@@ -251,8 +255,10 @@ const formTableMap: Record<
   SuratTugasPKM: {
     table: "surat_tugas_pkm",
     mapFn: (row, anggota) => ({
+      TahunPengajuan: row.tanggal_pengajuan ? new Date (row.tanggal_pengajuan).getFullYear().toString(): "",
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
+      JabatanFungsional: row.jabatan || "",
       Fakultas: row.fakultas || "",
       Prodi: row.prodi || "",
       Judul: row.judul || "",
