@@ -296,7 +296,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     // 2. bikin filename NamaKetua_(TemplateName).docx
     const templateName = config.template.replace(/\.docx$/, "");
     const namaKetua = formData.nama_ketua || "Unknown";
-    const filename = `${formData.nama_ketua}_${templateName}.docx`;
+    const filename = `${formData.nama_ketua}_${templateName}_${Date.now()}.docx`;
 
     // 3. upload ke supabase
     const { error: uploadError } = await supabase.storage
@@ -304,6 +304,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       .upload(filename, docxBuffer, {
         contentType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          upsert: false,
       });
 
     if (uploadError) throw uploadError;
