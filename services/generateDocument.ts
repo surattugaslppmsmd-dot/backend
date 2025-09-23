@@ -31,8 +31,14 @@ export async function generateDocx(
     delimiters: { start: "<<", end: ">>" },
   });
 
+  // Tambahkan nomor otomatis ke anggota
   if (data.anggota && Array.isArray(data.anggota)) {
-    data.anggota = data.anggota.map(a => ({ name: a.name, nidn: a.nidn }));
+    const total = data.anggota.length;
+    data.anggota = data.anggota.map((a, i) => ({
+      name: a.name,
+      nidn: a.nidn,
+      nomor: total > 1 ? i + 1 : "", // nomor hanya tampil jika lebih dari 1
+    }));
   }
 
   try {
@@ -48,9 +54,10 @@ export async function generateDocx(
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-const safeTitle = data.judul
-  ? data.judul.replace(/[^a-z0-9_\-]/gi, "_") 
-  : "output";
+
+  const safeTitle = data.judul
+    ? data.judul.replace(/[^a-z0-9_\-]/gi, "_")
+    : "output";
 
   const docxPath = path.join(outputDir, `${safeTitle}.docx`);
   fs.writeFileSync(docxPath, buf);
