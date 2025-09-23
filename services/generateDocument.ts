@@ -44,20 +44,14 @@ export async function generateDocx(
     delimiters: { start: "<<", end: ">>" },
   });
 
-  // Pastikan anggota selalu array
-  const anggotaList: Anggota[] = Array.isArray(data.anggota) ? data.anggota : [];
-  const total = anggotaList.length;
+const anggotaList: Anggota[] = Array.isArray(data.anggota) ? data.anggota : [];
 
-  if (data.anggota && Array.isArray(data.anggota)) {
-  const total = data.anggota.length;
-  data.anggota = data.anggota.map((a: any, i: number) => ({
-    name: a.name || "",
-    nidn: a.nidn || "",
-    nomor: total > 1 ? i + 1 : "",
-  }));
-} else {
-  data.anggota = [];
-}
+data.anggota = anggotaList.map((a, i) => ({
+  name: a.name || "",
+  nidn: a.nidn || "",
+  nomor: anggotaList.length > 1 ? i + 1 : "",
+}));
+
 
   try {
     doc.render(data);
