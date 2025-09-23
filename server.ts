@@ -297,6 +297,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       }
     }
 
+    
     const mappedData = config.mapFn(formData, formData.anggota || []);
     // 1. generate docx
     const docxPath = await generateDocx(config.template, mappedData);
@@ -321,11 +322,40 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
 
     // 4. simpan ke NeonDB
-    await pool.query(
-      `INSERT INTO ${config.table} (email, nama_ketua, judul, file_url, status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [formData.email || null, formData.nama_ketua || null, formData.judul || null, fileUrl, "belum_dibaca"]
-    );
+   const safeFormData: Record<string, any> = {};
+    for (const k of Object.keys(formData)) {
+      const v = formData[k];
+      if (v !== undefined) safeFormData[k] = v;
+    }
+    if (fileUrl) safeFormData["file_url"] = fileUrl;
+    if (!safeFormData.status) safeFormData["status"] = "belum_dibaca"; // default status
+
+    const columns = Object.keys(safeFormData);
+    const values = Object.values(safeFormData);
+    const placeholders = columns.map((_, i) => `$${i + 1}`);
+    const insertQuery = `INSERT INTO ${config.table} (${columns.join(", ")})
+                         VALUES (${placeholders.join(", ")}) RETURNING *`;
+    const result = await pool.query(insertQuery, values);
+    const record = result.rows[0];
+
+    // ---------- Simpan anggota ke tabel relasi ----------
+    let anggotaSaved: { name: string; nidn: string }[] = [];
+    if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
+      for (const a of formData.anggota) {
+        if (a?.name && a?.nidn) {
+          await pool.query(
+            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn)
+             VALUES ($1,$2,$3,$4)`,
+            [config.table, record.id, a.name, a.nidn]
+          );
+        }
+      }
+      const anggotaRows = await pool.query(
+        `SELECT nama, nidn FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
+        [config.table, record.id]
+      );
+      anggotaSaved = anggotaRows.rows.map(r => ({ name: r.nama, nidn: r.nidn }));
+    }
 
     // 5. kirim email user
     if (formData.email) {
@@ -345,7 +375,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       `Ini Hasil Sumbit form dari ${namaKetua} dengan Email ${formData.email} Silahkan Di Check lagi.`
     );
 
-    res.json({ success: true, fileUrl });
+    res.json({ success: true });
   } catch (err) {
     console.error("Submit error:", err);
     res.status(500).json({ error: "Gagal submit form" });
