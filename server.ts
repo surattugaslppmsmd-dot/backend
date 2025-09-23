@@ -9,7 +9,7 @@ import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "./services/sendEmail.js";
 import { generateDocx } from "./services/generateDocument.js";
-
+import multer from "multer";
 
 dotenv.config();
 const app = express();
@@ -23,6 +23,7 @@ const requiredEnvs = [
   "SUPABASE_KEY",
 ];
 
+const upload = multer({ storage: multer.memoryStorage() });
 
 requiredEnvs.forEach((key) => {
   if (!process.env[key]) {
@@ -253,12 +254,21 @@ const formTableMap: Record<
 
 
 // === Alur Submit ===
-app.post("/api/submit/:formType", async (req, res) => {
+app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) => {
   const { formType } = req.params;
-  const formData = req.body;
+  const formData = req.body || {};
+  const uploadedFile = req.file;
   const config = formTableMap[formType];
-
+  
+  if (!config) {
+    return res.status(400).json({ error: "Form type tidak valid" });
+  }
+  
   try {
+    console.log("FormType:", formType);
+    console.log("FormData:", formData);
+    console.log("Uploaded File:", uploadedFile?.originalname);
+
     // 1. generate docx
     const docxPath = await generateDocx(config.template, formData);
     const docxBuffer = fs.readFileSync(docxPath);
@@ -269,7 +279,7 @@ app.post("/api/submit/:formType", async (req, res) => {
     const filename = `${formData.nama_ketua}_${templateName}.docx`;
 
     // 3. upload ke supabase
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("surat-tugas-files")
       .upload(filename, docxBuffer, {
         contentType:
@@ -284,31 +294,34 @@ app.post("/api/submit/:formType", async (req, res) => {
     await pool.query(
       `INSERT INTO ${config.table} (email, nama_ketua, judul, file_url, status) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [formData.email, formData.nama_ketua, formData.judul, fileUrl, "belum_dibaca"]
+      [formData.email || null, formData.nama_ketua || null, formData.judul || null, fileUrl, "belum_dibaca"]
     );
 
     // 5. kirim email user
-    await sendEmail(
-      formData.email,
-      "Konfirmasi Pengisian Form LPPM",
-      null,
-      "Terima kasih sudah mengisi form, untuk surat yang telah di isi dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
-    );
+    if (formData.email) {
+      await sendEmail(
+        formData.email,
+        "Konfirmasi Pengisian Form LPPM",
+        null,
+        "Terima kasih sudah mengisi form, untuk surat yang telah di isi dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+      );
+    }
 
     // 6. kirim email admin dengan lampiran
     await sendEmail(
       "surattugaslppmsmd@gmail.com",
-      `Surat Tugas Baru dari ${formData.nama_ketua}`,
+      `Surat Tugas Baru dari ${namaKetua}`,
       { filename, content: docxBuffer },
-      `Dokumen ${formData.nama_ketua} terlampir.`
+      `Dokumen ${namaKetua} terlampir.`
     );
 
     res.json({ success: true, fileUrl });
   } catch (err) {
-    console.error(err);
+    console.error("Submit error:", err);
     res.status(500).json({ error: "Gagal submit form" });
   }
 });
+
 
 // === Admin: Get all data by table ===
 app.get("/admin/:table", authMiddleware, async (req, res) => {
