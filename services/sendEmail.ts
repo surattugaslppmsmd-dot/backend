@@ -1,34 +1,41 @@
 import nodemailer from "nodemailer";
-import fs from "fs";
-import path from "path";
+
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
 
 export async function sendEmail(
   to: string,
   subject: string,
-  pdfPath: string,
+  attachment: EmailAttachment | null,
   bodyText: string
 ) {
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: "surattugaslppmsmd@gmail.com",
-      pass: process.env.GMAIL_APP_PASSWORD,
+      pass: process.env.GMAIL_APP_PASSWORD, // App password dari Gmail
     },
   });
 
-  const pdfBuffer = fs.readFileSync(pdfPath);
-
-  await transporter.sendMail({
+  const mailOptions: any = {
     from: '"LPPM UNTAG Samarinda" <surattugaslppmsmd@gmail.com>',
     to,
     subject,
     text: bodyText,
-    attachments: [
+  };
+
+  if (attachment) {
+    mailOptions.attachments = [
       {
-        filename: path.basename(pdfPath),
-        content: pdfBuffer,
-        contentType: "application/pdf",
+        filename: attachment.filename,
+        content: attachment.content,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       },
-    ],
-  });
+    ];
+  }
+
+  await transporter.sendMail(mailOptions);
 }

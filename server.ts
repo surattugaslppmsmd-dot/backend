@@ -1,129 +1,51 @@
+import express, { Request, Response, NextFunction } from "express";
+import bodyParser from "body-parser";
 import dotenv from "dotenv";
-import path from "path";
-
-if (process.env.NODE_ENV !== "production") {
-  dotenv.config();
-}
-import { createClient } from "@supabase/supabase-js";
-
-import express from "express";
-import type { Request, Response, NextFunction } from "express";
-import cors from "cors";
-import multer from "multer";
-import { Pool } from "pg";
-import { fileURLToPath } from "url";
-import fs from "fs";
-import { generateDocx } from "./services/generateDocument.js";
-import { sendEmail } from "./services/sendEmail.js";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
+import { Pool } from "pg";
+import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
+import { sendEmail } from "./services/sendEmail.js";
+import { generateDocx } from "./services/generateDocument.js";
 
+dotenv.config();
 const app = express();
-const handler = (req: any, res: any) => app(req, res);
-const port = process.env.PORT || 5000;
-const isVercel = process.env.VERCEL === "1";
-const __filename = fileURLToPath(import.meta.url);
-app.get('/api', (req, res) => res.send('API works!'));
-const __dirname = path.dirname(__filename);
-const uploadDir = isVercel ? "/tmp/uploads" : path.join(__dirname, "uploads");
-const outputDir = isVercel ? "/tmp/output" : path.join(__dirname, "output");
+app.use(bodyParser.json());
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Validasi variabel environment
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("Supabase URL atau Service Role Key belum diatur. Periksa environment variables.");
-}
-
-// --- Init Supabase Client ---
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-// --- Pastikan folder lokal ada (kalau dipakai sementara sebelum upload) ---
-for (const dir of [uploadDir, outputDir]) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-// --- Upload file DOCX ke Storage ---
-async function uploadFileToSupabase(filePath: string, storagePath: string) {
-  const fileBuffer = fs.readFileSync(filePath);
-
-  const { data, error } = await supabase.storage
-    .from("uploads") // bucket name
-    .upload(storagePath, fileBuffer, {
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      upsert: true, // kalau sudah ada, replace
-    });
-
-  if (error) throw error;
-
-  // Ambil public URL untuk kirim lewat email
-  const { data: publicUrlData } = supabase.storage
-    .from("uploads")
-    .getPublicUrl(storagePath);
-
-  return publicUrlData.publicUrl;
-}
-
-
-// ---------- Ensure Directories ----------
-function ensureDirSync(p: string) {
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
-}
-ensureDirSync(uploadDir);
-ensureDirSync(outputDir);
-
-app.use(
-  cors({
-    origin: "https://surattugaslppm.com",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
-// ---------- Multer ----------
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, `${Date.now()}_${file.originalname}`),
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
-});
-
-// ---------- Database ----------
+// === NeonDB (Postgres) ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
-// ---------- JWT Helper ----------
-interface AuthRequest extends Request {
-  user?: string | jwt.JwtPayload;
-}
-const JWT_SECRET = process.env.JWT_SECRET || "secret_key";
+// === Supabase ===
+const supabase = createClient(
+  process.env.SUPABASE_URL as string,
+  process.env.SUPABASE_SERVICE_ROLE_KEY as string
+);
 
-function generateToken(payload: object, expiresIn: number = 3600) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+// === JWT Helper ===
+const JWT_SECRET = process.env.JWT_SECRET || "";
+
+function generateToken(payload: object, expiresIn: number = 3600): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn }) as string;
 }
 
-function verifyJWT(req: AuthRequest, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ message: "Token tidak ditemukan" });
+function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers["authorization"];
+  if (!authHeader) return res.status(401).json({ error: "No token" });
   const token = authHeader.split(" ")[1];
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(401).json({ message: "Token tidak valid/kadaluwarsa" });
-    req.user = decoded;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    (req as any).user = decoded;
     next();
-  });
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
 }
-// ---------------- LOGIN ADMIN ----------------
+
+// ===== Admin login =====
 app.post("/api/admin-login", async (req: Request, res: Response) => {
   try {
     const username = req.body.username?.trim();
@@ -151,43 +73,13 @@ app.post("/api/admin-login", async (req: Request, res: Response) => {
   }
 });
 
-
-// ---------- Upload PDF ke Supabase ----------
-async function uploadPdfToSupabase(filePath: string): Promise<string> {
-  const fileName = `${Date.now()}_${filePath.split("/").pop()}`;
-  const fileBuffer = fs.readFileSync(filePath);
-
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from("uploads")
-    .upload(fileName, fileBuffer, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-
-  if (uploadError) throw uploadError;
-
-  const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(fileName);
-  return urlData.publicUrl;
-}
-
-(async () => {
-  try {
-    const publicUrl = await uploadFileToSupabase(
-      `${outputDir}/namafile.docx`, // path lokal
-      `dokumen/namafile.docx` // path di bucket
-    );
-    console.log("Public URL:", publicUrl);
-  } catch (err) {
-    console.error("Upload gagal:", err);
-  }
-})();
-
-// Helper untuk ambil semua data dari tabel
-const getAllFromTable = async (tableName: string) => {
+// ===== Helper: get all from table =====
+async function getAllFromTable(tableName: string) {
   const result = await pool.query(`SELECT * FROM ${tableName} ORDER BY id DESC`);
   return result.rows;
-};
-// Halaman Pengesahan
+}
+
+// ===== Public GET endpoints for tables =====
 app.get("/api/anggota-surat", async (req, res) => {
   try {
     const data = await getAllFromTable("anggota_surat");
@@ -248,14 +140,7 @@ app.get("/api/surat-tugas-pkm", async (req, res) => {
   }
 });
 
-// ---------- Utility ----------
-function validateFields(data: any, requiredFields: string[]): string[] {
-  return requiredFields.filter(
-    (f) => data[f] === undefined || data[f] === null || data[f] === ""
-  );
-}
-
-// ---------------- FORM CONFIG
+// ===== FORM CONFIG =====
 const formTableMap: Record<
   string,
   {
@@ -272,23 +157,10 @@ const formTableMap: Record<
       Email: row.email || "",
       NamaKetua: row.nama_ketua || row.nama || "",
       NIDN: row.nidn || "",
-      Puslitbang: row.puslitbang || "",
       Fakultas: row.fakultas || "",
       Prodi: row.prodi || "",
-      JabatanFungsional: row.jabatan || "",
       Judul: row.judul || "",
-      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID",{day: "numeric", month:"long", year:"numeric"}) : "",
-      NomorHP: row.nomor_hp || row.nomorHp || "",
-      NamaInstitusi: row.nama_institusi || row.namaInstitusi || "",
-      AlamatInstitusi: row.alamat || row.alamat_institusi || "",
-      PenanggungJawab: row.penanggung_jawab || row.penanggungJawab || "",
-      TahunPelaksana: row.tahun_pelaksana ? new Date(row.tahun_pelaksana).toLocaleDateString("id-ID",{day: "numeric", month:"long", year:"numeric"}) : "",
-      BiayaTahun: row.biaya_tahun || row.biayaTahun ? new Intl.NumberFormat("id-ID",{ style:"currency", currency:"IDR", maximumFractionDigits: 0 }).format(Number(row.biaya_tahun || row.biayaTahun)) : "",
-      BiayaKeseluruhan: row.biaya_keseluruhan || row.biayaKeseluruhan ? new Intl.NumberFormat("id-ID",{ style:"currency", currency:"IDR", maximumFractionDigits: 0 }).format(Number(row.biaya_keseluruhan || row.biayaKeseluruhan)) :"",
-      NamaDekan: row.nama_dekan || row.namaDekan || "",
-      NIPDekan: row.nip_dekan || row.nipDekan || "",
-      NamaPeneliti: row.nama_peneliti || row.namaPeneliti || "",
-      NIPKetua: row.nip_ketua || row.nipKetua || "",
+      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
       anggota: anggota || [],
     }),
     template: "Halaman Pengesahan.docx",
@@ -301,17 +173,15 @@ const formTableMap: Record<
     mapFn: (row, anggota) => ({
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
-      JabatanFungsional: row.jabatan || "",
-      JenisBuku: row.jenis_buku || row.jenisBuku || "",
-      PenerbitBuku: row.penerbit_buku || row.penerbitBuku || "",
-      Judul: row.judul || row.judul_buku || "",
-      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID",{day: "numeric", month:"long", year:"numeric"}) : "",
-      LinkArtikel: row.link_artikel || row.linkArtikel || "",
+      Judul: row.judul || "",
+      JenisBuku: row.jenis_buku || "",
+      PenerbitBuku: row.penerbit_buku || "",
+      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
       anggota: anggota || [],
     }),
     template: "Surat Tugas Buku.docx",
     emailSubject: "Surat Tugas Buku",
-    requiredFields: ["email", "nama_ketua", "nidn", "fakultas", "prodi", "judul", "jenis_buku", "penerbit_buku", "tanggal"],
+    requiredFields: ["email", "nama_ketua", "nidn", "judul", "jenis_buku", "penerbit_buku", "tanggal"],
   },
 
   SuratTugasHKI: {
@@ -319,11 +189,9 @@ const formTableMap: Record<
     mapFn: (row, anggota) => ({
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
-      JabatanFungsional: row.jabatan || "",
-      JenisHakCipta: row.jenis_hki || row.jenis_hak_cipta || "",
-      No_Tanggal_Permohonan: row.no_tanggal_permohonan ? new Date(row.no_tanggal_permohonan).toLocaleDateString("id-ID",{day: "numeric", month:"long", year:"numeric"}) : "",
-      JudulCiptaan: row.judul_ciptaan || row.judulCiptaan || "",
-      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID",{day: "numeric", month:"long", year:"numeric"}) : "",
+      JudulCiptaan: row.judul_ciptaan || "",
+      JenisHKI: row.jenis_hki || "",
+      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
       anggota: anggota || [],
     }),
     template: "Surat Tugas HKI.docx",
@@ -334,14 +202,12 @@ const formTableMap: Record<
   SuratTugasPenelitian: {
     table: "surat_tugas_penelitian",
     mapFn: (row, anggota) => ({
-      TahunPengajuan: row.tanggal_pengajuan ? new Date(row.tanggal).toLocaleDateString("id-ID") : "",
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
-      JabatanFungsional: row.jabatan || "",
       Fakultas: row.fakultas || "",
       Prodi: row.prodi || "",
       Judul: row.judul || "",
-      Tanggal: row.tanggal ? new Date(row.no_tanggal_permohonan).toLocaleDateString("id-ID",{day: "numeric", month:"long", year:"numeric"}) : "",
+      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
       anggota: anggota || [],
     }),
     template: "Surat Tugas Penelitian.docx",
@@ -352,139 +218,121 @@ const formTableMap: Record<
   SuratTugasPKM: {
     table: "surat_tugas_pkm",
     mapFn: (row, anggota) => ({
-      TahunPengajuan: row.tanggal_pengajuan ? new Date(row.tanggal_pengajuan).getFullYear().toString() : "",
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
-      JabatanFungsional: row.jabatan || "",
       Fakultas: row.fakultas || "",
       Prodi: row.prodi || "",
       Judul: row.judul || "",
-      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID",{day: "numeric", month:"long", year:"numeric"}) : "",
+      Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
       anggota: anggota || [],
     }),
     template: "Surat Tugas PKM.docx",
     emailSubject: "Surat Tugas PKM",
     requiredFields: ["email", "nama_ketua", "nidn", "judul", "tanggal"],
   },
-}; 
+};
 
-// ---------- Endpoint Submit Form ----------
-app.post(
-  "/api/forms/:formType",
-  upload.single("pdfFile"),
-  async (req: Request, res: Response) => {
-    const { formType } = req.params;
-    const config = formTableMap[formType];
-    if (!config)
-      return res
-        .status(400)
-        .json({ success: false, message: "FormType tidak valid" });
 
-    let { anggota, ...formData } = req.body as any;
+// === Alur Submit ===
+app.post("/api/submit/:formType", async (req, res) => {
+  const { formType } = req.params;
+  const formData = req.body;
+  const config = formTableMap[formType];
 
-    if (typeof anggota === "string") {
-      try {
-        anggota = anggota ? JSON.parse(anggota) : [];
-      } catch {
-        anggota = [];
-      }
-    }
+  try {
+    // 1. generate docx
+    const docxPath = await generateDocx(config.template, formData);
+    const docxBuffer = fs.readFileSync(docxPath);
 
-    try {
-      // ---------- Simpan data ke DB ----------
-      const safeFormData: Record<string, any> = {};
-      for (const k of Object.keys(formData)) {
-        const v = formData[k];
-        if (v !== undefined) safeFormData[k] = v;
-      }
+    // 2. bikin filename NamaKetua_(TemplateName).docx
+    const templateName = config.template.replace(/\.docx$/, "");
+    const filename = `${formData.nama_ketua}_${templateName}.docx`;
 
-      const columns = Object.keys(safeFormData);
-      const values = Object.values(safeFormData);
-      const placeholders = columns.map((_, i) => `$${i + 1}`);
-      const insertQuery = `INSERT INTO ${config.table} (${columns.join(
-        ", "
-      )}) VALUES (${placeholders.join(", ")}) RETURNING *`;
-      const result = await pool.query(insertQuery, values);
-      const record = result.rows[0];
-
-      // ---------- Simpan anggota ----------
-      let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
-      if (Array.isArray(anggota) && anggota.length > 0) {
-        for (const a of anggota) {
-          if (a?.name && a?.nidn && a?.idsintaAnggota) {
-            await pool.query(
-              `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsinta_anggota)
-               VALUES ($1,$2,$3,$4,$5)`,
-              [config.table, record.id, a.name, a.nidn, a.idsintaAnggota]
-            );
-          }
-        }
-        const anggotaRows = await pool.query(
-          `SELECT nama, nidn, idsinta_anggota FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
-          [config.table, record.id]
-        );
-        anggotaSaved = anggotaRows.rows.map((r) => ({
-          name: r.nama,
-          nidn: r.nidn,
-          idsintaAnggota: r.idsinta_anggota,
-        }));
-      }
-
-      // ---------- Generate DOCX ----------
-const mappedData = config.mapFn(record, anggotaSaved);
-const docxPath = await generateDocx(config.template, mappedData);
-
-// ---------- Upload DOCX ke Supabase ----------
-let fileUrl: string | null = null;
-if (docxPath) {
-  const fileBuffer = fs.readFileSync(docxPath);
-  const fileName = path.basename(docxPath);
-
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from("uploads")
-    .upload(fileName, fileBuffer, {
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      upsert: true,
-    });
-
-  if (uploadError) throw uploadError;
-
-  const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(fileName);
-  fileUrl = urlData.publicUrl;
-}
-
-      // ---------- Update file_url di DB ----------
-      if (fileUrl) {
-        await pool.query(`UPDATE ${config.table} SET file_url=$1 WHERE id=$2`, [
-          fileUrl,
-          record.id,
-        ]);
-      }
-
-      // ---------- Kirim Email ----------
-      const penerima = formData.email || record.email || "";
-      const emailBody = `Kepada ${formData.nama_ketua || "Bapak/Ibu"},
-Terima kasih telah mengisi form. Silakan lihat lampiran PDF.
-Untuk nomor surat, hubungi:
-- Ritria Novidyanti, S.Pd (+62 852-4763-6399)`;
-
-      await sendEmail(penerima, config.emailSubject, docxPath, emailBody);
-
-      // ---------- Response ke frontend ----------
-      res.json({
-        success: true,
-        message: "Form berhasil disubmit, PDF dibuat & email terkirim.",
-        file_url: fileUrl,
-        id: record.id,
+    // 3. upload ke supabase
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("surat-tugas-files")
+      .upload(filename, docxBuffer, {
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       });
-    } catch (err) {
-      console.error("Error submit form:", err);
-      res.status(500).json({
-        success: false,
-        message: "Terjadi kesalahan server (DB/CloudConvert/Email)",
-      });
-    }
+
+    if (uploadError) throw uploadError;
+
+    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
+
+    // 4. simpan ke NeonDB
+    await pool.query(
+      `INSERT INTO ${config.table} (email, nama_ketua, judul, file_url, status) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [formData.email, formData.nama_ketua, formData.judul, fileUrl, "belum_dibaca"]
+    );
+
+    // 5. kirim email user
+    await sendEmail(
+      formData.email,
+      "Konfirmasi Pengisian Form LPPM",
+      null,
+      "Terima kasih sudah mengisi form, untuk surat yang telah di isi dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+    );
+
+    // 6. kirim email admin dengan lampiran
+    await sendEmail(
+      "surattugaslppmsmd@gmail.com",
+      `Surat Tugas Baru dari ${formData.nama_ketua}`,
+      { filename, content: docxBuffer },
+      `Dokumen ${formData.nama_ketua} terlampir.`
+    );
+
+    res.json({ success: true, fileUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Gagal submit form" });
   }
-);
+});
 
-export default handler;
+// === Admin: Get all data by table ===
+app.get("/admin/:table", authMiddleware, async (req, res) => {
+  const { table } = req.params;
+  try {
+    const result = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Admin: Update status (read/approve) ===
+app.post("/admin/:table/:id/status", authMiddleware, async (req, res) => {
+  const { table, id } = req.params;
+  const { status } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE ${table} SET status = $1 WHERE id = $2 RETURNING *`,
+      [status, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Admin: Get all tables (untuk dashboard) ===
+app.get("/admin/all-tables", authMiddleware, async (req, res) => {
+  try {
+    const tables = Object.values(formTableMap).map((f) => f.table);
+    res.json({ tables });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Root ===
+app.get("/", (req, res) => {
+  res.send("API aktif");
+});
+
+// === Server listen ===
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
