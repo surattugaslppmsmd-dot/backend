@@ -279,7 +279,9 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
   const uploadedFile = req.file;
   const config = formTableMap[formType];
 
-  if (!config) return res.status(400).json({ error: "Form type tidak valid" });
+  if (!config) {
+    return res.status(400).json({ error: "Form type tidak valid" });
+  }
 
   try {
     console.log("FormType:", formType);
@@ -288,15 +290,17 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
 
     // --- VALIDASI FIELD REQUIRED ---
     for (const field of config.requiredFields) {
-      if (!formData[field]) return res.status(400).json({ error: `${field} wajib diisi` });
+      if (!formData[field]) {
+        return res.status(400).json({ error: `${field} wajib diisi` });
+      }
     }
 
     // --- PARSE ANGGOTA JSON ---
     if (formData.anggota && typeof formData.anggota === "string") {
       try {
         formData.anggota = JSON.parse(formData.anggota);
-        if (!Array.isArray(formData.anggota)) formData.anggota = [];
-      } catch {
+      } catch (err) {
+        console.error("Gagal parse anggota JSON:", err);
         formData.anggota = [];
       }
     } else if (!Array.isArray(formData.anggota)) {
@@ -306,16 +310,15 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     // --- MAP DATA UNTUK DOCX ---
     const mappedData = config.mapFn(formData, formData.anggota);
 
-    // 1. generate docx
+    // --- GENERATE DOCX ---
     const docxPath = await generateDocx(config.template, mappedData);
     const docxBuffer = fs.readFileSync(docxPath);
 
-    // 2. bikin filename
     const templateName = config.template.replace(/\.docx$/, "");
     const namaKetua = formData.nama_ketua || "Unknown";
     const filename = `${namaKetua}_${templateName}_${Date.now()}.docx`;
 
-    // 3. Upload ke Supabase DOCX
+    // --- UPLOAD DOCX KE SUPABASE ---
     const { error: uploadError } = await supabase.storage
       .from("surat-tugas-files")
       .upload(filename, docxBuffer, {
@@ -327,35 +330,37 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
 
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
 
-    // 4. Upload PDF user jika ada
+    // --- UPLOAD PDF USER JIKA ADA ---
     let pdfUrl: string | null = null;
     if (uploadedFile) {
       const pdfFileName = `${namaKetua}_${Date.now()}_${uploadedFile.originalname}`;
-      const { data: pdfData, error: pdfError } = await supabase.storage
+      const { error: pdfError } = await supabase.storage
         .from("uploads")
         .upload(pdfFileName, uploadedFile.buffer, {
           contentType: uploadedFile.mimetype,
           upsert: false,
         });
-      if (pdfError) console.error("Gagal upload PDF user:", pdfError);
-      else {
+      if (!pdfError) {
         pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
         console.log("PDF user berhasil diupload:", pdfUrl);
+      } else {
+        console.error("Gagal upload PDF user:", pdfError);
       }
     }
 
-    // 5. Siapkan data untuk INSERT ke DB
+    // --- SIAPKAN DATA UNTUK INSERT ---
     const safeFormData: Record<string, any> = {};
     for (const k of Object.keys(formData)) {
       const v = formData[k];
       if (v !== undefined) safeFormData[k] = v;
     }
+
     if (fileUrl) safeFormData["file_url"] = fileUrl;
     if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
     delete safeFormData.formType;
     safeFormData["status"] = formData.status || "belum_dibaca";
 
-    // --- Stringify object/array kecuali anggota ---
+    // --- STRINGIFY OBJECT KECUALI anggota ---
     for (const key of Object.keys(safeFormData)) {
       const value = safeFormData[key];
       if (key !== "anggota" && typeof value === "object" && value !== null) {
@@ -363,35 +368,41 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
       }
     }
 
-    // --- Insert ke table utama tanpa cast ---
+    // --- INSERT KE TABLE UTAMA ---
     const columns = Object.keys(safeFormData);
     const values = Object.values(safeFormData);
     const placeholders = columns.map((_, i) => `$${i + 1}`);
 
-    const insertQuery = `INSERT INTO ${config.table} (${columns.join(", ")})
-                         VALUES (${placeholders.join(", ")})
-                         RETURNING *`;
+    const insertQuery = `
+      INSERT INTO ${config.table} (${columns.join(", ")})
+      VALUES (${placeholders.join(", ")})
+      RETURNING *;
+    `;
 
     const result = await pool.query(insertQuery, values);
     const record = result.rows[0];
 
-    // --- Simpan anggota ke tabel relasi (case-sensitive) ---
+    // --- SIMPAN ANGGOTA KE TABEL RELASI ---
     let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
     if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
       for (const a of formData.anggota) {
         if (a?.name && a?.nidn) {
           await pool.query(
             `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, "idsintaAnggota")
-             VALUES ($1,$2,$3,$4,$5)`,
+             VALUES ($1, $2, $3, $4, $5)`,
             [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
           );
         }
       }
+
       const anggotaRows = await pool.query(
-        `SELECT nama, nidn, "idsintaAnggota" FROM anggota_surat 
-         WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
+        `SELECT nama, nidn, "idsintaAnggota" 
+         FROM anggota_surat 
+         WHERE surat_type=$1 AND surat_id=$2 
+         ORDER BY id ASC`,
         [config.table, record.id]
       );
+
       anggotaSaved = anggotaRows.rows.map(r => ({
         name: r.nama,
         nidn: r.nidn,
