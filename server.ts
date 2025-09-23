@@ -175,12 +175,25 @@ const formTableMap: Record<
     table: "halaman_pengesahan",
     mapFn: (row, anggota) => ({
       Email: row.email || "",
+      Puslitbang: row.puslitbang || "",
       NamaKetua: row.nama_ketua || row.nama || "",
       NIDN: row.nidn || "",
+      JabatanFungsional : row.jabatan || "",
       Fakultas: row.fakultas || "",
       Prodi: row.prodi || "",
+      NomorHP: row.nomor_hp || "",
       Judul: row.judul || "",
+      NamaInstitusi: row.nama_institusi || "",
+      AlamatInstitusi: row.alamat || "",
+      PenanggungJawab: row.penanggung_jawab || "",
+      TahunPelaksana: row.tahun_pelaksana || "",
+      BiayaTahun: row.biaya_tahun || "",
+      BiayaKeseluruhan: row.biaya_keseluruhan || "",
       Tanggal: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "",
+      NamaDekan: row.nama_dekan || "",
+      NipDekan: row.nip_dekan || "",
+      NamaPeneliti: row.nama_peneliti || "",
+      NipKetua: row.nip_ketua || "",
       anggota: anggota || [],
     }),
     template: "Halaman Pengesahan.docx",
@@ -269,8 +282,9 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     console.log("FormData:", formData);
     console.log("Uploaded File:", uploadedFile?.originalname);
 
+    const mappedData = config.mapFn(formData, formData.anggota || []);
     // 1. generate docx
-    const docxPath = await generateDocx(config.template, formData);
+    const docxPath = await generateDocx(config.template, mappedData);
     const docxBuffer = fs.readFileSync(docxPath);
 
     // 2. bikin filename NamaKetua_(TemplateName).docx
