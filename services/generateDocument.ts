@@ -50,11 +50,13 @@ export async function generateDocx(
 
   if (data.anggota && Array.isArray(data.anggota)) {
   const total = data.anggota.length;
-  data.anggota = data.anggota.map((a, i) => ({
+  data.anggota = data.anggota.map((a: any, i: number) => ({
     name: a.name || "",
     nidn: a.nidn || "",
     nomor: total > 1 ? i + 1 : "",
   }));
+} else {
+  data.anggota = [];
 }
 
   try {
