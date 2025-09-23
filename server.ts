@@ -273,16 +273,16 @@ const formTableMap: Record<
 
 
 // === Alur Submit ===
-app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) => {
+app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => {
   const { formType } = req.params;
   const formData = req.body || {};
   const uploadedFile = req.file;
   const config = formTableMap[formType];
-  
+
   if (!config) {
     return res.status(400).json({ error: "Form type tidak valid" });
   }
-  
+
   try {
     console.log("FormType:", formType);
     console.log("FormData:", formData);
@@ -295,7 +295,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       }
     }
 
-    // --- PARSE ANGGOTA JSON ---
+    // --- PARSE ANGGOTA JSON (jika dikirim string) ---
     if (formData.anggota && typeof formData.anggota === "string") {
       try {
         formData.anggota = JSON.parse(formData.anggota);
@@ -353,55 +353,45 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     const safeFormData: Record<string, any> = {};
     for (const k of Object.keys(formData)) {
       const v = formData[k];
-      if (v !== undefined) safeFormData[k] = v;
+      if (v !== undefined && k !== "anggota") {
+        // stringify hanya untuk object/array lain, bukan anggota
+        safeFormData[k] = typeof v === "object" ? JSON.stringify(v) : v;
+      }
     }
     if (fileUrl) safeFormData["file_url"] = fileUrl;
     if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
-
-    delete safeFormData.formType;
     safeFormData["status"] = formData.status || "belum_dibaca";
 
-    // --- Pastikan semua field object/array di-stringify untuk JSON kecuali anggota ---
-    for (const key of Object.keys(safeFormData)) {
-      const value = safeFormData[key];
-      if (key !== "anggota" && typeof value === "object" && value !== null) {
-        safeFormData[key] = JSON.stringify(value);
-      }
-    }
-
-    // --- Insert ke table utama tanpa cast ---
+    // --- Insert ke tabel utama tanpa cast (::json) ---
     const columns = Object.keys(safeFormData);
     const values = Object.values(safeFormData);
     const placeholders = columns.map((_, i) => `$${i + 1}`);
-
     const insertQuery = `INSERT INTO ${config.table} (${columns.join(", ")})
                          VALUES (${placeholders.join(", ")})
                          RETURNING *`;
-
     const result = await pool.query(insertQuery, values);
     const record = result.rows[0];
 
     // ---------- Simpan anggota ke tabel relasi ----------
     let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
-    if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
-      for (const a of formData.anggota) {
-        if (a?.name && a?.nidn) {
-          await pool.query(
-            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaAnggota)
-             VALUES ($1,$2,$3,$4,$5)`,
-            [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
-          );
-        }
+    for (const a of formData.anggota) {
+      if (a.name && a.nidn) {
+        const query = `INSERT INTO anggota_surat
+          (surat_type, surat_id, nama, nidn, idsintaAnggota)
+          VALUES ($1,$2,$3,$4,$5) RETURNING *`;
+        const resAnggota = await pool.query(query, [
+          config.table,
+          record.id,
+          a.name,
+          a.nidn,
+          a.idsintaAnggota || "",
+        ]);
+        anggotaSaved.push({
+          name: resAnggota.rows[0].nama,
+          nidn: resAnggota.rows[0].nidn,
+          idsintaAnggota: resAnggota.rows[0].idsintaAnggota,
+        });
       }
-      const anggotaRows = await pool.query(
-        `SELECT nama, nidn, idsintaAnggota FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
-        [config.table, record.id]
-      );
-      anggotaSaved = anggotaRows.rows.map(r => ({
-        name: r.nama,
-        nidn: r.nidn,
-        idsintaAnggota: r.idsintaAnggota,
-      }));
     }
 
     // ---------- Kirim email ke user ----------
@@ -410,7 +400,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
         formData.email,
         "Konfirmasi Pengisian Form LPPM",
         null,
-        "Terima kasih sudah mengisi form, untuk surat yang telah di isi dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+        "Terima kasih sudah mengisi form, untuk surat yang telah diisi dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
       );
     }
 
@@ -419,7 +409,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       "surattugaslppmsmd@gmail.com",
       `Surat Tugas Baru dari ${namaKetua}`,
       { filename, content: docxBuffer },
-      `Ini Hasil Sumbit form dari ${namaKetua} dengan Email ${formData.email} Silahkan Di Check lagi.`
+      `Ini Hasil Submit form dari ${namaKetua} dengan Email ${formData.email}. Silahkan di cek.`
     );
 
     res.json({ success: true, record, anggota: anggotaSaved, fileUrl, pdfUrl });
@@ -429,8 +419,6 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     res.status(500).json({ error: "Gagal submit form" });
   }
 });
-
-
 
 
 // === Admin: Get all data by table ===
