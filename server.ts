@@ -309,17 +309,35 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     const filename = `${formData.nama_ketua}_${templateName}_${Date.now()}.docx`;
 
     // 3. upload ke supabase
-    const { error: uploadError } = await supabase.storage
-      .from("surat-tugas-files")
-      .upload(filename, docxBuffer, {
-        contentType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          upsert: false,
-      });
+const { error: uploadError } = await supabase.storage
+  .from("surat-tugas-files")
+  .upload(filename, docxBuffer, {
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    upsert: false,
+  });
 
-    if (uploadError) throw uploadError;
+if (uploadError) throw uploadError;
 
-    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
+const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
+
+let pdfUrl: string | null = null;
+if (uploadedFile) {
+  const pdfFileName = `${formData.nama_ketua || "Unknown"}_${Date.now()}_${uploadedFile.originalname}`;
+  const { data: pdfData, error: pdfError } = await supabase.storage
+    .from("uploads")                // ⬅️ bucket untuk PDF user
+    .upload(pdfFileName, uploadedFile.buffer, {
+      contentType: uploadedFile.mimetype,
+      upsert: false,
+    });
+
+  if (pdfError) {
+    console.error("Gagal upload PDF user:", pdfError);
+  } else {
+    pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
+    console.log("PDF user berhasil diupload:", pdfUrl);
+  }
+}
 
     // 4. simpan ke NeonDB
    const safeFormData: Record<string, any> = {};
@@ -329,6 +347,8 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     }
     if (fileUrl) safeFormData["file_url"] = fileUrl;
     if (!safeFormData.status) safeFormData["status"] = "belum_dibaca"; // default status
+
+    safeFormData["status"] = formData.status || "belum_dibaca";
 
     const columns = Object.keys(safeFormData);
     const values = Object.values(safeFormData);
