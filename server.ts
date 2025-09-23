@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
@@ -9,10 +10,15 @@ import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "./services/sendEmail.js";
 import { generateDocx } from "./services/generateDocument.js";
 
+
 dotenv.config();
 const app = express();
 app.use(bodyParser.json());
-
+app.use(cors({
+  origin: ["https://surattugaslppm.com", "http://localhost:3000"], // daftar origin yang diizinkan
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 // === NeonDB (Postgres) ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
