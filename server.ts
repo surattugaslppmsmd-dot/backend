@@ -273,16 +273,16 @@ const formTableMap: Record<
 
 
 // === Alur Submit ===
-app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) => {
+app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => {
   const { formType } = req.params;
   const formData = req.body || {};
   const uploadedFile = req.file;
   const config = formTableMap[formType];
-  
+
   if (!config) {
     return res.status(400).json({ error: "Form type tidak valid" });
   }
-  
+
   try {
     console.log("FormType:", formType);
     console.log("FormData:", formData);
@@ -300,8 +300,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       try {
         formData.anggota = JSON.parse(formData.anggota);
         if (!Array.isArray(formData.anggota)) formData.anggota = [];
-      } catch (err) {
-        console.error("Gagal parse anggota:", err);
+      } catch {
         formData.anggota = [];
       }
     } else if (!Array.isArray(formData.anggota)) {
@@ -371,17 +370,19 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     }
 
     // --- Insert ke table utama ---
-const columns = Object.keys(safeFormData);
-const values = Object.values(safeFormData);
-const placeholders = columns.map((_, i) => `$${i + 1}`);
+    const columns = Object.keys(safeFormData);
+    const values = Object.values(safeFormData);
+    const placeholders = columns.map((_, i) => `$${i + 1}`);
 
-const insertQuery = `INSERT INTO ${config.table} (${columns.join(", ")})
-                     VALUES (${placeholders.join(", ")})
-                     RETURNING *`;
+    // --- Cast anggota JSONB saat insert ---
+    const castedColumns = columns.map(col => (col === "anggota" ? `${col}::jsonb` : col));
 
-const result = await pool.query(insertQuery, values);
-const record = result.rows[0];
+    const insertQuery = `INSERT INTO ${config.table} (${castedColumns.join(", ")})
+                        VALUES (${placeholders.join(", ")})
+                        RETURNING *`;
 
+    const result = await pool.query(insertQuery, values);
+    const record = result.rows[0];
 
     // ---------- Simpan anggota ke tabel relasi ----------
     let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
