@@ -19,6 +19,23 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+const requiredEnvs = [
+  "DATABASE_URL",
+  "JWT_SECRET",
+  "SUPABASE_URL",
+  "SUPABASE_KEY",
+];
+
+
+requiredEnvs.forEach((key) => {
+  if (!process.env[key]) {
+    console.warn(`⚠️  Warning: ENV ${key} tidak ditemukan! Pastikan sudah diset di Vercel`);
+  }
+});
+
+console.log("✅ Environment variables berhasil dimuat");
+
 // === NeonDB (Postgres) ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
