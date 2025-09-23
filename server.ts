@@ -287,6 +287,15 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     console.log("FormType:", formType);
     console.log("FormData:", formData);
     console.log("Uploaded File:", uploadedFile?.originalname);
+    
+    if (formData.anggota && typeof formData.anggota === "string") {
+      try {
+        formData.anggota = JSON.parse(formData.anggota);
+      } catch (err) {
+        console.error("Gagal parse anggota:", err);
+        formData.anggota = [];
+      }
+    }
 
     const mappedData = config.mapFn(formData, formData.anggota || []);
     // 1. generate docx
@@ -333,7 +342,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       "surattugaslppmsmd@gmail.com",
       `Surat Tugas Baru dari ${namaKetua}`,
       { filename, content: docxBuffer },
-      `Dokumen ${namaKetua} terlampir.`
+      `Ini Hasil Sumbit form dari ${namaKetua} dengan Email ${formData.email} Silahkan Di Check lagi.`
     );
 
     res.json({ success: true, fileUrl });
