@@ -7,13 +7,11 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Gunakan folder /tmp jika di Vercel
 const isVercel = process.env.VERCEL === "1";
 const outputDir = isVercel
   ? "/tmp/output"
   : path.join(__dirname, "..", "output");
 
-// Tipe data anggota
 interface Anggota {
   name?: string;
   nidn?: string;
@@ -28,10 +26,22 @@ interface DocData {
 
 export async function generateDocx(
   templateFile: string,
-  data: DocData
+  data?: DocData // <- pastikan bisa undefined
 ): Promise<string> {
-  const templatePath = path.join(__dirname, "..", "templates", templateFile);
+  if (!data) data = {}; // <- jaga jika undefined
 
+  // pastikan anggota selalu array
+  if (!Array.isArray(data.anggota)) data.anggota = [];
+
+  // tambahkan nomor untuk looping
+  const anggotaList: Anggota[] = data.anggota;
+  data.anggota = anggotaList.map((a, i) => ({
+    name: a?.name || "",
+    nidn: a?.nidn || "",
+    nomor: anggotaList.length > 1 ? i + 1 : "",
+  }));
+
+  const templatePath = path.join(__dirname, "..", "templates", templateFile);
   if (!fs.existsSync(templatePath)) {
     throw new Error(`Template file tidak ditemukan: ${templatePath}`);
   }
@@ -44,15 +54,6 @@ export async function generateDocx(
     delimiters: { start: "<<", end: ">>" },
   });
 
-  // --- Loop anggota aman ---
-  const anggotaList: Anggota[] = Array.isArray(data.anggota) ? data.anggota : [];
-  data.anggota = anggotaList.map((a, i) => ({
-    name: a?.name || "",
-    nidn: a?.nidn || "",
-    nomor: anggotaList.length > 1 ? i + 1 : "",
-  }));
-  // ------------------------
-
   try {
     doc.render(data);
   } catch (err) {
@@ -62,7 +63,6 @@ export async function generateDocx(
 
   const buf = doc.getZip().generate({ type: "nodebuffer" });
 
-  // Pastikan folder output ada
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
