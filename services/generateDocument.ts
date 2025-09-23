@@ -31,16 +31,18 @@ export async function generateDocx(
     delimiters: { start: "<<", end: ">>" },
   });
 
-  // Tambahkan nomor otomatis ke anggota
-  if (data.anggota && Array.isArray(data.anggota)) {
-    const total = data.anggota.length;
-    data.anggota = data.anggota.map((a, i) => ({
-      name: a.name,
-      nidn: a.nidn,
-      nomor: total > 1 ? i + 1 : "", // nomor hanya tampil jika lebih dari 1
-    }));
+  // Pastikan data.anggota selalu array
+  if (!Array.isArray(data.anggota)) {
+    data.anggota = [];
   }
 
+  // Tambahkan nomor otomatis ke anggota
+  const total = data.anggota.length;
+  data.anggota = data.anggota.map((a: { name?: string; nidn?: string }, i: number) => ({
+  name: a.name || "",
+  nidn: a.nidn || "",
+  nomor: total > 1 ? i + 1 : "",
+}));
   try {
     doc.render(data);
   } catch (err) {
@@ -50,7 +52,7 @@ export async function generateDocx(
 
   const buf = doc.getZip().generate({ type: "nodebuffer" });
 
-  // Pastikan folder ada
+  // Pastikan folder output ada
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
