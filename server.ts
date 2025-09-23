@@ -389,8 +389,8 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
         if (a?.name && a?.nidn) {
           await pool.query(
             `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, "idsintaAnggota")
-             VALUES ($1, $2, $3, $4, $5)`,
-            [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
+            VALUES ($1, $2, $3, $4, $5)`,
+            [config.table, record.id, a.name.toString(), a.nidn.toString(), (a.idsintaAnggota || "").toString()]
           );
         }
       }
