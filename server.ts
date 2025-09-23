@@ -287,18 +287,30 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     console.log("FormType:", formType);
     console.log("FormData:", formData);
     console.log("Uploaded File:", uploadedFile?.originalname);
-    
+
+    // --- VALIDASI FIELD REQUIRED ---
+    for (const field of config.requiredFields) {
+      if (!formData[field]) {
+        return res.status(400).json({ error: `${field} wajib diisi` });
+      }
+    }
+
+    // --- PARSE ANGGOTA JSON ---
     if (formData.anggota && typeof formData.anggota === "string") {
       try {
         formData.anggota = JSON.parse(formData.anggota);
+        if (!Array.isArray(formData.anggota)) formData.anggota = [];
       } catch (err) {
         console.error("Gagal parse anggota:", err);
         formData.anggota = [];
       }
+    } else if (!Array.isArray(formData.anggota)) {
+      formData.anggota = [];
     }
 
-    
-    const mappedData = config.mapFn(formData, formData.anggota || []);
+    // --- MAP DATA UNTUK DOCX ---
+    const mappedData = config.mapFn(formData, formData.anggota);
+
     // 1. generate docx
     const docxPath = await generateDocx(config.template, mappedData);
     const docxBuffer = fs.readFileSync(docxPath);
@@ -306,50 +318,60 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     // 2. bikin filename NamaKetua_(TemplateName).docx
     const templateName = config.template.replace(/\.docx$/, "");
     const namaKetua = formData.nama_ketua || "Unknown";
-    const filename = `${formData.nama_ketua}_${templateName}_${Date.now()}.docx`;
+    const filename = `${namaKetua}_${templateName}_${Date.now()}.docx`;
 
     // 3. upload ke supabase
-const { error: uploadError } = await supabase.storage
-  .from("surat-tugas-files")
-  .upload(filename, docxBuffer, {
-    contentType:
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    upsert: false,
-  });
+    const { error: uploadError } = await supabase.storage
+      .from("surat-tugas-files")
+      .upload(filename, docxBuffer, {
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        upsert: false,
+      });
+    if (uploadError) throw uploadError;
 
-if (uploadError) throw uploadError;
+    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
 
-const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
+    // 4. upload PDF user jika ada
+    let pdfUrl: string | null = null;
+    if (uploadedFile) {
+      const pdfFileName = `${namaKetua}_${Date.now()}_${uploadedFile.originalname}`;
+      const { data: pdfData, error: pdfError } = await supabase.storage
+        .from("uploads") // bucket untuk PDF user
+        .upload(pdfFileName, uploadedFile.buffer, {
+          contentType: uploadedFile.mimetype,
+          upsert: false,
+        });
+      if (pdfError) {
+        console.error("Gagal upload PDF user:", pdfError);
+      } else {
+        pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
+        console.log("PDF user berhasil diupload:", pdfUrl);
+      }
+    }
 
-let pdfUrl: string | null = null;
-if (uploadedFile) {
-  const pdfFileName = `${formData.nama_ketua || "Unknown"}_${Date.now()}_${uploadedFile.originalname}`;
-  const { data: pdfData, error: pdfError } = await supabase.storage
-    .from("uploads")                // ⬅️ bucket untuk PDF user
-    .upload(pdfFileName, uploadedFile.buffer, {
-      contentType: uploadedFile.mimetype,
-      upsert: false,
-    });
-
-  if (pdfError) {
-    console.error("Gagal upload PDF user:", pdfError);
-  } else {
-    pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
-    console.log("PDF user berhasil diupload:", pdfUrl);
-  }
-}
-
-    // 4. simpan ke NeonDB
-   const safeFormData: Record<string, any> = {};
+    // 5. siapkan data untuk INSERT ke DB
+    const safeFormData: Record<string, any> = {};
     for (const k of Object.keys(formData)) {
       const v = formData[k];
       if (v !== undefined) safeFormData[k] = v;
     }
     if (fileUrl) safeFormData["file_url"] = fileUrl;
-    
+    if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
+
     delete safeFormData.formType;
     safeFormData["status"] = formData.status || "belum_dibaca";
-    
+
+    // --- PASTIKAN JSON FIELD BERUPA OBJECT/ARRAY ---
+    if (safeFormData.anggota && typeof safeFormData.anggota === "string") {
+      try {
+        safeFormData.anggota = JSON.parse(safeFormData.anggota);
+      } catch {
+        safeFormData.anggota = [];
+      }
+    }
+
+    // 6. INSERT KE TABLE UTAMA
     const columns = Object.keys(safeFormData);
     const values = Object.values(safeFormData);
     const placeholders = columns.map((_, i) => `$${i + 1}`);
@@ -364,9 +386,9 @@ if (uploadedFile) {
       for (const a of formData.anggota) {
         if (a?.name && a?.nidn) {
           await pool.query(
-            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn)
-             VALUES ($1,$2,$3,$4)`,
-            [config.table, record.id, a.name, a.nidn]
+            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaAnggota)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
           );
         }
       }
@@ -374,10 +396,10 @@ if (uploadedFile) {
         `SELECT nama, nidn FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
         [config.table, record.id]
       );
-      anggotaSaved = anggotaRows.rows.map(r => ({ name: r.nama, nidn: r.nidn }));
+      anggotaSaved = anggotaRows.rows.map(r => ({ name: r.nama, nidn: r.nidn, idsintaAnggota: r.idsintaAnggota}));
     }
 
-    // 5. kirim email user
+    // ---------- Kirim email ke user ----------
     if (formData.email) {
       await sendEmail(
         formData.email,
@@ -387,7 +409,7 @@ if (uploadedFile) {
       );
     }
 
-    // 6. kirim email admin dengan lampiran
+    // ---------- Kirim email ke admin ----------
     await sendEmail(
       "surattugaslppmsmd@gmail.com",
       `Surat Tugas Baru dari ${namaKetua}`,
@@ -395,12 +417,14 @@ if (uploadedFile) {
       `Ini Hasil Sumbit form dari ${namaKetua} dengan Email ${formData.email} Silahkan Di Check lagi.`
     );
 
-    res.json({ success: true });
+    res.json({ success: true, record, anggota: anggotaSaved, fileUrl, pdfUrl });
+
   } catch (err) {
     console.error("Submit error:", err);
     res.status(500).json({ error: "Gagal submit form" });
   }
 });
+
 
 
 // === Admin: Get all data by table ===
