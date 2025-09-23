@@ -320,85 +320,93 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
     const namaKetua = formData.nama_ketua || "Unknown";
     const filename = `${namaKetua}_${templateName}_${Date.now()}.docx`;
 
-    // 3. upload ke supabase
-    const { error: uploadError } = await supabase.storage
-      .from("surat-tugas-files")
-      .upload(filename, docxBuffer, {
-        contentType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        upsert: false,
-      });
-    if (uploadError) throw uploadError;
+    // 3. Upload ke Supabase DOCX
+const { error: uploadError } = await supabase.storage
+  .from("surat-tugas-files")
+  .upload(filename, docxBuffer, {
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    upsert: false,
+  });
+if (uploadError) throw uploadError;
 
-    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
+const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
 
-    // 4. upload PDF user jika ada
-    let pdfUrl: string | null = null;
-    if (uploadedFile) {
-      const pdfFileName = `${namaKetua}_${Date.now()}_${uploadedFile.originalname}`;
-      const { data: pdfData, error: pdfError } = await supabase.storage
-        .from("uploads") // bucket untuk PDF user
-        .upload(pdfFileName, uploadedFile.buffer, {
-          contentType: uploadedFile.mimetype,
-          upsert: false,
-        });
-      if (pdfError) {
-        console.error("Gagal upload PDF user:", pdfError);
-      } else {
-        pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
-        console.log("PDF user berhasil diupload:", pdfUrl);
-      }
-    }
+// 4. Upload PDF user jika ada
+let pdfUrl: string | null = null;
+if (uploadedFile) {
+  const pdfFileName = `${namaKetua}_${Date.now()}_${uploadedFile.originalname}`;
+  const { data: pdfData, error: pdfError } = await supabase.storage
+    .from("uploads")
+    .upload(pdfFileName, uploadedFile.buffer, {
+      contentType: uploadedFile.mimetype,
+      upsert: false,
+    });
+  if (pdfError) {
+    console.error("Gagal upload PDF user:", pdfError);
+  } else {
+    pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
+    console.log("PDF user berhasil diupload:", pdfUrl);
+  }
+}
 
-    // 5. siapkan data untuk INSERT ke DB
-    const safeFormData: Record<string, any> = {};
-    for (const k of Object.keys(formData)) {
-      const v = formData[k];
-      if (v !== undefined) safeFormData[k] = v;
-    }
-    if (fileUrl) safeFormData["file_url"] = fileUrl;
-    if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
+// 5. Siapkan data untuk INSERT ke DB
+const safeFormData: Record<string, any> = {};
+for (const k of Object.keys(formData)) {
+  const v = formData[k];
+  if (v !== undefined) safeFormData[k] = v;
+}
+if (fileUrl) safeFormData["file_url"] = fileUrl;
+if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
 
-    delete safeFormData.formType;
-    safeFormData["status"] = formData.status || "belum_dibaca";
+delete safeFormData.formType;
+safeFormData["status"] = formData.status || "belum_dibaca";
 
-    // --- PASTIKAN JSON FIELD BERUPA OBJECT/ARRAY ---
-    if (safeFormData.anggota && typeof safeFormData.anggota === "string") {
-      try {
-        safeFormData.anggota = JSON.parse(safeFormData.anggota);
-      } catch {
-        safeFormData.anggota = [];
-      }
-    }
+// --- Pastikan semua field object/array di-stringify untuk JSON ---
+for (const key of Object.keys(safeFormData)) {
+  const value = safeFormData[key];
+  if (typeof value === "object" && value !== null) {
+    safeFormData[key] = JSON.stringify(value);
+  }
+}
 
-    // 6. INSERT KE TABLE UTAMA
-    const columns = Object.keys(safeFormData);
-    const values = Object.values(safeFormData);
-    const placeholders = columns.map((_, i) => `$${i + 1}`);
-    const insertQuery = `INSERT INTO ${config.table} (${columns.join(", ")})
-                         VALUES (${placeholders.join(", ")}) RETURNING *`;
-    const result = await pool.query(insertQuery, values);
-    const record = result.rows[0];
+// 6. INSERT KE TABLE UTAMA (casting JSON/JSONB jika perlu)
+const columns = Object.keys(safeFormData);
+const values = Object.values(safeFormData);
+const placeholders = columns.map((_, i) => `$${i + 1}`);
+const castedColumns = columns.map(col => {
+  if (col === "anggota") return `${col}::jsonb`; // cast kolom anggota
+  return col;
+});
 
-    // ---------- Simpan anggota ke tabel relasi ----------
-    let anggotaSaved: { name: string; nidn: string }[] = [];
-    if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
-      for (const a of formData.anggota) {
-        if (a?.name && a?.nidn) {
-          await pool.query(
-            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaAnggota)
-             VALUES ($1,$2,$3,$4,$5)`,
-            [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
-          );
-        }
-      }
-      const anggotaRows = await pool.query(
-        `SELECT nama, nidn FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
-        [config.table, record.id]
+const insertQuery = `INSERT INTO ${config.table} (${castedColumns.join(", ")})
+                     VALUES (${placeholders.join(", ")})
+                     RETURNING *`;
+const result = await pool.query(insertQuery, values);
+const record = result.rows[0];
+
+// ---------- Simpan anggota ke tabel relasi ----------
+let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
+if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
+  for (const a of formData.anggota) {
+    if (a?.name && a?.nidn) {
+      await pool.query(
+        `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaAnggota)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
       );
-      anggotaSaved = anggotaRows.rows.map(r => ({ name: r.nama, nidn: r.nidn, idsintaAnggota: r.idsintaAnggota}));
     }
-
+  }
+  const anggotaRows = await pool.query(
+    `SELECT nama, nidn, idsintaAnggota FROM anggota_surat WHERE surat_type=$1 AND surat_id=$2 ORDER BY id ASC`,
+    [config.table, record.id]
+  );
+  anggotaSaved = anggotaRows.rows.map(r => ({
+    name: r.nama,
+    nidn: r.nidn,
+    idsintaAnggota: r.idsintaAnggota,
+  }));
+}
     // ---------- Kirim email ke user ----------
     if (formData.email) {
       await sendEmail(
