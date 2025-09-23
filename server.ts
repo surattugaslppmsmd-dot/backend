@@ -14,11 +14,7 @@ import { generateDocx } from "./services/generateDocument.js";
 dotenv.config();
 const app = express();
 app.use(bodyParser.json());
-app.use(cors({
-  origin: ["https://surattugaslppm.com", "http://localhost:3000"], // daftar origin yang diizinkan
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+app.use(cors({ origin: "*" }));
 
 const requiredEnvs = [
   "DATABASE_URL",
@@ -34,7 +30,7 @@ requiredEnvs.forEach((key) => {
   }
 });
 
-console.log("✅ Environment variables berhasil dimuat");
+console.log("Environment variables berhasil dimuat");
 
 // === NeonDB (Postgres) ===
 const pool = new Pool({
