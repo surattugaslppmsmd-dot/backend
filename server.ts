@@ -265,6 +265,7 @@ app.post("/api/submit/:formType", async (req, res) => {
 
     // 2. bikin filename NamaKetua_(TemplateName).docx
     const templateName = config.template.replace(/\.docx$/, "");
+    const namaKetua = formData.nama_ketua || "Unknown";
     const filename = `${formData.nama_ketua}_${templateName}.docx`;
 
     // 3. upload ke supabase
