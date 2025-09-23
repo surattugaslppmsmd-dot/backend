@@ -370,20 +370,18 @@ app.post("/api/submit/:formType", upload.single("pdfFile"),  async (req, res) =>
       }
     }
 
-    // --- Cast kolom anggota menjadi jsonb saat insert ---
-    const columns = Object.keys(safeFormData);
-    const values = Object.values(safeFormData);
-    const placeholders = columns.map((_, i) => `$${i + 1}`);
-    const castedColumns = columns.map(col => {
-      if (col === "anggota") return `${col}::jsonb`;
-      return col;
-    });
+    // --- Insert ke table utama ---
+const columns = Object.keys(safeFormData);
+const values = Object.values(safeFormData);
+const placeholders = columns.map((_, i) => `$${i + 1}`);
 
-    const insertQuery = `INSERT INTO ${config.table} (${castedColumns.join(", ")})
-                         VALUES (${placeholders.join(", ")})
-                         RETURNING *`;
-    const result = await pool.query(insertQuery, values);
-    const record = result.rows[0];
+const insertQuery = `INSERT INTO ${config.table} (${columns.join(", ")})
+                     VALUES (${placeholders.join(", ")})
+                     RETURNING *`;
+
+const result = await pool.query(insertQuery, values);
+const record = result.rows[0];
+
 
     // ---------- Simpan anggota ke tabel relasi ----------
     let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
