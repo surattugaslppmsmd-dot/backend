@@ -346,10 +346,10 @@ if (uploadedFile) {
       if (v !== undefined) safeFormData[k] = v;
     }
     if (fileUrl) safeFormData["file_url"] = fileUrl;
-    if (!safeFormData.status) safeFormData["status"] = "belum_dibaca"; // default status
-
+    
+    delete safeFormData.formType;
     safeFormData["status"] = formData.status || "belum_dibaca";
-
+    
     const columns = Object.keys(safeFormData);
     const values = Object.values(safeFormData);
     const placeholders = columns.map((_, i) => `$${i + 1}`);
