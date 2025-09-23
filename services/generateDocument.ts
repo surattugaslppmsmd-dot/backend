@@ -13,9 +13,22 @@ const outputDir = isVercel
   ? "/tmp/output"
   : path.join(__dirname, "..", "output");
 
+// Tipe data anggota
+interface Anggota {
+  name?: string;
+  nidn?: string;
+  nomor?: number | string;
+}
+
+interface DocData {
+  judul?: string;
+  anggota?: Anggota[];
+  [key: string]: any;
+}
+
 export async function generateDocx(
   templateFile: string,
-  data: Record<string, any>
+  data: DocData
 ): Promise<string> {
   const templatePath = path.join(__dirname, "..", "templates", templateFile);
 
@@ -31,18 +44,16 @@ export async function generateDocx(
     delimiters: { start: "<<", end: ">>" },
   });
 
-  // Pastikan data.anggota selalu array
-  if (!Array.isArray(data.anggota)) {
-    data.anggota = [];
-  }
+  // Pastikan anggota selalu array
+  const anggotaList: Anggota[] = Array.isArray(data.anggota) ? data.anggota : [];
+  const total = anggotaList.length;
 
-  // Tambahkan nomor otomatis ke anggota
-  const total = data.anggota.length;
-  data.anggota = data.anggota.map((a: { name?: string; nidn?: string }, i: number) => ({
-  name: a.name || "",
-  nidn: a.nidn || "",
-  nomor: total > 1 ? i + 1 : "",
-}));
+  data.anggota = anggotaList.map((a: Anggota, i: number) => ({
+    name: a.name || "",
+    nidn: a.nidn || "",
+    nomor: total > 1 ? i + 1 : "",
+  }));
+
   try {
     doc.render(data);
   } catch (err) {
