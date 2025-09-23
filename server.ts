@@ -271,8 +271,7 @@ const formTableMap: Record<
   },
 };
 
-
-// === Alur Submit Final ===
+// ALUR SUBMIT
 app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => {
   const { formType } = req.params;
   const formData = req.body || {};
@@ -296,120 +295,124 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     }
 
     // --- PARSE ANGGOTA JSON ---
-if (formData.anggota && typeof formData.anggota === "string") {
-  try {
-    formData.anggota = JSON.parse(formData.anggota);
-  } catch (err) {
-    console.error("Gagal parse anggota JSON:", err);
-    formData.anggota = [];
-  }
-} else if (!Array.isArray(formData.anggota)) {
-  formData.anggota = [];
-}
-
-// --- MAP DATA UNTUK DOCX ---
-const mappedData = config.mapFn(formData, formData.anggota);
-
-// --- GENERATE DOCX ---
-const docxPath = await generateDocx(config.template, mappedData);
-const docxBuffer = fs.readFileSync(docxPath);
-
-const templateName = config.template.replace(/\.docx$/, "");
-const namaKetua = formData.nama_ketua || "Unknown";
-const filename = `${namaKetua}_${templateName}_${Date.now()}.docx`;
-
-// --- UPLOAD DOCX KE SUPABASE ---
-const { error: uploadError } = await supabase.storage
-  .from("surat-tugas-files")
-  .upload(filename, docxBuffer, {
-    contentType:
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    upsert: false,
-  });
-if (uploadError) throw uploadError;
-
-const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
-
-// --- UPLOAD PDF USER JIKA ADA ---
-let pdfUrl: string | null = null;
-if (uploadedFile) {
-  const pdfFileName = `${namaKetua}_${Date.now()}_${uploadedFile.originalname}`;
-  const { error: pdfError } = await supabase.storage
-    .from("uploads")
-    .upload(pdfFileName, uploadedFile.buffer, {
-      contentType: uploadedFile.mimetype,
-      upsert: false,
-    });
-  if (!pdfError) {
-    pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
-    console.log("PDF user berhasil diupload:", pdfUrl);
-  } else {
-    console.error("Gagal upload PDF user:", pdfError);
-  }
-}
-
-// --- SIAPKAN DATA UNTUK INSERT ---
-const safeFormData: Record<string, any> = {};
-for (const k of Object.keys(formData)) {
-  const v = formData[k];
-  if (v !== undefined) safeFormData[k] = v;
-}
-
-if (fileUrl) safeFormData["file_url"] = fileUrl;
-if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
-delete safeFormData.formType;
-safeFormData["status"] = formData.status || "belum_dibaca";
-
-// --- Jangan stringify anggota, biarkan array object ---
-for (const key of Object.keys(safeFormData)) {
-  const value = safeFormData[key];
-  if (key !== "anggota" && typeof value === "object" && value !== null) {
-    safeFormData[key] = JSON.stringify(value);
-  }
-}
-
-// --- INSERT KE TABLE UTAMA ---
-const columns = Object.keys(safeFormData);
-const values = Object.values(safeFormData);
-const placeholders = columns.map((_, i) => `$${i + 1}`);
-
-const insertQuery = `
-  INSERT INTO ${config.table} (${columns.join(", ")})
-  VALUES (${placeholders.join(", ")})
-  RETURNING *;
-`;
-
-const result = await pool.query(insertQuery, values);
-const record = result.rows[0];
-
-// --- SIMPAN ANGGOTA KE TABEL RELASI ---
-let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
-if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
-  for (const a of formData.anggota) {
-    if (a?.name && a?.nidn) {
-      await pool.query(
-        `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaanggota)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
-      );
+    if (formData.anggota && typeof formData.anggota === "string") {
+      try {
+        formData.anggota = JSON.parse(formData.anggota); // parse string JSON menjadi array object
+      } catch (err) {
+        console.error("Gagal parse anggota JSON:", err);
+        formData.anggota = [];
+      }
+    } else if (!Array.isArray(formData.anggota)) {
+      formData.anggota = [];
     }
-  }
 
-  const anggotaRows = await pool.query(
-    `SELECT nama, nidn, idsintaanggota 
-     FROM anggota_surat 
-     WHERE surat_type=$1 AND surat_id=$2 
-     ORDER BY id ASC`,
-    [config.table, record.id]
-  );
+    // --- MAP DATA UNTUK DOCX ---
+    const mappedData = config.mapFn(formData, formData.anggota);
 
-  anggotaSaved = anggotaRows.rows.map(r => ({
-    name: r.nama,
-    nidn: r.nidn,
-    idsintaAnggota: r.idsintaanggota,
-  }));
-}
+    // --- GENERATE DOCX ---
+    const docxPath = await generateDocx(config.template, mappedData);
+    const docxBuffer = fs.readFileSync(docxPath);
 
+    const templateName = config.template.replace(/\.docx$/, "");
+    const namaKetua = formData.nama_ketua || "Unknown";
+    const filename = `${namaKetua}_${templateName}_${Date.now()}.docx`;
+
+    // --- UPLOAD DOCX KE SUPABASE ---
+    const { error: uploadError } = await supabase.storage
+      .from("surat-tugas-files")
+      .upload(filename, docxBuffer, {
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        upsert: false,
+      });
+    if (uploadError) throw uploadError;
+
+    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
+
+    // --- UPLOAD PDF USER JIKA ADA ---
+    let pdfUrl: string | null = null;
+    if (uploadedFile) {
+      const pdfFileName = `${namaKetua}_${Date.now()}_${uploadedFile.originalname}`;
+      const { error: pdfError } = await supabase.storage
+        .from("uploads")
+        .upload(pdfFileName, uploadedFile.buffer, {
+          contentType: uploadedFile.mimetype,
+          upsert: false,
+        });
+      if (!pdfError) {
+        pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfFileName}`;
+        console.log("PDF user berhasil diupload:", pdfUrl);
+      } else {
+        console.error("Gagal upload PDF user:", pdfError);
+      }
+    }
+
+    // --- SIAPKAN DATA UNTUK INSERT ---
+    const safeFormData: Record<string, any> = {};
+    for (const k of Object.keys(formData)) {
+      const v = formData[k];
+      if (v !== undefined) safeFormData[k] = v;
+    }
+
+    if (fileUrl) safeFormData["file_url"] = fileUrl;
+    if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
+    delete safeFormData.formType;
+    safeFormData["status"] = formData.status || "belum_dibaca";
+
+    // --- Stringify object (kecuali anggota tetap array JSON) ---
+    for (const key of Object.keys(safeFormData)) {
+      const value = safeFormData[key];
+      if (key !== "anggota" && typeof value === "object" && value !== null) {
+        safeFormData[key] = JSON.stringify(value);
+      }
+    }
+
+    // --- Jika kolom anggota di DB JSON/JSONB, stringify sebelum insert ---
+    if (Array.isArray(formData.anggota)) {
+      safeFormData["anggota"] = JSON.stringify(formData.anggota);
+    }
+
+    // --- INSERT KE TABLE UTAMA ---
+    const columns = Object.keys(safeFormData);
+    const values = Object.values(safeFormData);
+    const placeholders = columns.map((_, i) => `$${i + 1}`);
+
+    const insertQuery = `
+      INSERT INTO ${config.table} (${columns.join(", ")})
+      VALUES (${placeholders.join(", ")})
+      RETURNING *;
+    `;
+
+    const result = await pool.query(insertQuery, values);
+    const record = result.rows[0];
+
+    // --- SIMPAN ANGGOTA KE TABEL RELASI ---
+    let anggotaSaved: { name: string; nidn: string; idsintaAnggota: string }[] = [];
+    if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
+      for (const a of formData.anggota) {
+        if (a?.name && a?.nidn) {
+          await pool.query(
+            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaanggota)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [config.table, record.id, a.name, a.nidn, a.idsintaAnggota || ""]
+          );
+        }
+      }
+
+      const anggotaRows = await pool.query(
+        `SELECT nama, nidn, idsintaanggota 
+         FROM anggota_surat 
+         WHERE surat_type=$1 AND surat_id=$2 
+         ORDER BY id ASC`,
+        [config.table, record.id]
+      );
+
+      anggotaSaved = anggotaRows.rows.map(r => ({
+        name: r.nama,
+        nidn: r.nidn,
+        idsintaAnggota: r.idsintaanggota,
+      }));
+    }
 
     // --- Kirim email ke user ---
     if (formData.email) {
@@ -426,11 +429,10 @@ if (Array.isArray(formData.anggota) && formData.anggota.length > 0) {
       "surattugaslppmsmd@gmail.com",
       `Surat Tugas Baru dari ${namaKetua}`,
       { filename, content: docxBuffer },
-      `Ini Hasil Sumbit form dari ${namaKetua} dengan Email ${formData.email} Silahkan Di Check lagi.`
+      `Ini Hasil Submit form dari ${namaKetua} dengan Email ${formData.email}. Silahkan di check.`
     );
 
     res.json({ success: true, record, anggota: anggotaSaved, fileUrl, pdfUrl });
-
   } catch (err) {
     console.error("Submit error:", err);
     res.status(500).json({ error: "Gagal submit form" });
