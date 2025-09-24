@@ -14,13 +14,15 @@ import multer from "multer";
 dotenv.config();
 const app = express();
 app.use(bodyParser.json());
-app.use(cors({
-  origin: ["https://surattugaslppm.com"], // atau "*" untuk test
+const corsOptions = {
+  origin: ["https://surattugaslppm.com"], 
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
-}));
-app.options("*", cors());
+};
+app.use(cors(corsOptions));
+
+app.options("*", cors(corsOptions));
 
 const upload = multer({ storage: multer.memoryStorage() });
 
