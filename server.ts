@@ -12,23 +12,25 @@ import { generateDocx } from "./services/generateDocument.js";
 import multer from "multer";
 
 dotenv.config();
+
 const app = express();
 app.use(bodyParser.json());
-const corsOptions = {
-  origin: ["https://surattugaslppm.com"], 
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-};
-app.use(cors(corsOptions));
-
-app.options("*", cors(corsOptions));
+app.use(
+  cors({
+    origin: ["https://surattugaslppm.com"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+app.options("*", cors());
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// === PostgreSQL Pool ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
 const supabase = createClient(
@@ -122,8 +124,7 @@ app.get("/api/:table", async (req, res) => {
 
 
 // ===== FORM CONFIG =====
-const formTableMap: Record<
-  string,
+const formTableMap: Record < string,
   {
     table: string;
     mapFn: (row: any, anggota: { name: string; nidn: string }[]) => Record<string, any>;
@@ -378,7 +379,7 @@ app.post("/admin/:table/:id/status", authMiddleware, async (req, res) => {
 });
 
 // === Admin: Get all tables (untuk dashboard) ===
-app.get("/admin/all-tables", authMiddleware, async (req, res) => {
+app.get("/admin/all-tables", authMiddleware, async (req: Request, res: Response) => {
   try {
     const tables = Object.values(formTableMap).map((f) => f.table);
     res.json({ tables });
@@ -388,10 +389,10 @@ app.get("/admin/all-tables", authMiddleware, async (req, res) => {
 });
 
 // === Admin: Get all rows per table ===
-app.get("/admin/:table", authMiddleware, async (req, res) => {
+app.get("/admin/:table", authMiddleware, async (req: Request, res: Response) => {
   const { table } = req.params;
 
-  const validTables = Object.values(formTableMap).map(f => f.table);
+  const validTables = Object.values(formTableMap).map((f) => f.table);
   if (!validTables.includes(table)) {
     return res.status(400).json({ error: "Invalid table name" });
   }
@@ -406,8 +407,11 @@ app.get("/admin/:table", authMiddleware, async (req, res) => {
 
 
 
-// ===== Start server =====
 const port = process.env.PORT || 5000;
-app.listen(port, () => console.log(`Server running on port ${port}`));
+
+if (process.env.NODE_ENV !== "production") {
+  app.listen(port, () => console.log(`Server running on port ${port}`));
+}
+
 
 export default app;
