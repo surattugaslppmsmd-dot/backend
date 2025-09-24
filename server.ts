@@ -75,55 +75,43 @@ app.post("/api/admin-login", async (req: Request, res: Response) => {
   }
 });
 
+
 // ===== Helper: get all =====
 async function getAllFromTable(tableName: string) {
   const result = await pool.query(`SELECT * FROM ${tableName} ORDER BY id DESC`);
   return result.rows;
 }
 
-// ===== GET endpoints =====
-app.get("/api/anggota-surat", async (req, res) => {
+// ===== GET endpoint dinamis =====
+app.get("/api/:table", async (req, res) => {
+  const { table } = req.params;
+
+  // daftar tabel yang diijinkan
+  const allowedTables = [
+    "anggota_surat",
+    "halaman_pengesahan",
+    "surat_tugas_buku",
+    "surat_tugas_hki",
+    "surat_tugas_penelitian",
+    "surat_tugas_pkm",
+  ];
+
+  if (!allowedTables.includes(table)) {
+    return res.status(400).json({ message: "Table tidak valid" });
+  }
+
   try {
-    res.json(await getAllFromTable("anggota_surat"));
-  } catch {
-    res.status(500).json({ message: "Gagal mengambil data Anggota" });
+    const rows = await getAllFromTable(table);
+    res.json(rows);
+  } catch (err: any) {
+    console.error(`Error GET /api/${table}:`, err.message);
+    res.status(500).json({
+      message: `Gagal mengambil data dari ${table}`,
+      error: err.message,
+    });
   }
 });
-app.get("/api/halaman-pengesahan", async (req, res) => {
-  try {
-    res.json(await getAllFromTable("halaman_pengesahan"));
-  } catch {
-    res.status(500).json({ message: "Gagal mengambil data Halaman Pengesahan" });
-  }
-});
-app.get("/api/surat-tugas-buku", async (req, res) => {
-  try {
-    res.json(await getAllFromTable("surat_tugas_buku"));
-  } catch {
-    res.status(500).json({ message: "Gagal mengambil data Surat Tugas Buku" });
-  }
-});
-app.get("/api/surat-tugas-hki", async (req, res) => {
-  try {
-    res.json(await getAllFromTable("surat_tugas_hki"));
-  } catch {
-    res.status(500).json({ message: "Gagal mengambil data Surat Tugas HKI" });
-  }
-});
-app.get("/api/surat-tugas-penelitian", async (req, res) => {
-  try {
-    res.json(await getAllFromTable("surat_tugas_penelitian"));
-  } catch {
-    res.status(500).json({ message: "Gagal mengambil data Surat Tugas Penelitian" });
-  }
-});
-app.get("/api/surat-tugas-pkm", async (req, res) => {
-  try {
-    res.json(await getAllFromTable("surat_tugas_pkm"));
-  } catch {
-    res.status(500).json({ message: "Gagal mengambil data Surat Tugas PKM" });
-  }
-});
+
 
 // ===== FORM CONFIG =====
 const formTableMap: Record<
