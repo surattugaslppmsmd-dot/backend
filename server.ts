@@ -12,9 +12,8 @@ import { generateDocx } from "./services/generateDocument.js";
 import multer from "multer";
 
 dotenv.config();
-
 const app = express();
-app.use(bodyParser.json());
+// ===== CORS GLOBAL =====
 app.use(
   cors({
     origin: ["https://surattugaslppm.com"],
@@ -23,7 +22,12 @@ app.use(
     credentials: true,
   })
 );
-app.options("/*", cors());
+
+// ===== Preflight untuk API Dinamis =====
+app.options("/api/*", cors());
+
+// ===== Body Parser =====
+app.use(bodyParser.json());
 
 const upload = multer({ storage: multer.memoryStorage() });
 
