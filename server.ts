@@ -249,7 +249,11 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
   try {
     // Parse anggota
     if (formData.anggota && typeof formData.anggota === "string") {
-      try { formData.anggota = JSON.parse(formData.anggota); } catch { formData.anggota = []; }
+      try {
+        formData.anggota = JSON.parse(formData.anggota);
+      } catch {
+        formData.anggota = [];
+      }
     }
     if (!Array.isArray(formData.anggota)) formData.anggota = [];
 
@@ -261,22 +265,32 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     const filename = `${formData.nama_ketua || "Unknown"}_${Date.now()}.docx`;
     const { error: uploadError } = await supabase.storage
       .from("surat-tugas-files")
-      .upload(filename, docxBuffer, { contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      .upload(filename, docxBuffer, {
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
     if (uploadError) throw uploadError;
     const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
 
+    // Upload PDF jika ada
     let pdfUrl: string | null = null;
     if (uploadedFile) {
       const pdfName = `${formData.nama_ketua}_${Date.now()}_${uploadedFile.originalname}`;
       const { error: pdfError } = await supabase.storage
         .from("uploads")
-        .upload(pdfName, uploadedFile.buffer, { contentType: uploadedFile.mimetype });
-      if (!pdfError) pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfName}`;
+        .upload(pdfName, uploadedFile.buffer, {
+          contentType: uploadedFile.mimetype,
+        });
+      if (!pdfError) {
+        pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfName}`;
+      }
     }
 
     // Insert ke tabel utama
     const safeFormData: Record<string, any> = {};
-    Object.keys(formData).forEach((k) => { if (k !== "anggota") safeFormData[k] = formData[k]; });
+    Object.keys(formData).forEach((k) => {
+      if (k !== "anggota") safeFormData[k] = formData[k];
+    });
     if (fileUrl) safeFormData["file_url"] = fileUrl;
     if (pdfUrl) safeFormData["pdf_url"] = pdfUrl;
     safeFormData["status"] = formData.status || "belum_dibaca";
@@ -284,7 +298,9 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     const cols = Object.keys(safeFormData);
     const vals = Object.values(safeFormData);
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(",");
-    const insertQuery = `INSERT INTO ${config.table} (${cols.join(",")}) VALUES (${placeholders}) RETURNING id`;
+    const insertQuery = `INSERT INTO ${config.table} (${cols.join(
+      ","
+    )}) VALUES (${placeholders}) RETURNING id`;
     const result = await pool.query(insertQuery, vals);
     const suratId = result.rows[0].id;
 
@@ -294,39 +310,105 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
         await pool.query(
           `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaanggota)
            VALUES ($1,$2,$3,$4,$5)`,
-          [config.table, suratId, anggota.name || "", anggota.nidn || "", anggota.idsintaAnggota || ""]
+          [
+            config.table,
+            suratId,
+            anggota.name || "",
+            anggota.nidn || "",
+            anggota.idsintaAnggota || "",
+          ]
         );
       }
     }
 
     // --- KIRIM EMAIL ---
     const namaKetua = formData.nama_ketua || "Unknown";
-    try {
-      // Email untuk user
-      await sendEmail(
-        formData.email,
-        "Konfirmasi Pengisian Form LPPM",
-        null,
-        "Terima kasih sudah mengisi form, untuk surat yang telah di isi dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
-      );
 
-      // Email untuk admin
-      await sendEmail(
-        "surattugaslppmsmd@gmail.com",
-        `Surat Tugas Baru dari ${namaKetua}`,
-        null,
-        `Ini Hasil Submit form dari ${namaKetua} dengan Email ${formData.email}. Silahkan di check.`
-      );
-    } catch (emailErr) {
-      console.error("Gagal mengirim email:", emailErr);
-    }
+    // Email untuk user
+    await sendEmail(
+      formData.email,
+      "Konfirmasi Pengisian Form LPPM",
+      null,
+      "Terima kasih sudah mengisi form, untuk surat yang telah di isi dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+    );
 
-    res.json({ success: true, fileUrl, pdfUrl, suratId });
+    // Email untuk admin (dengan lampiran .docx hasil mapping)
+    await sendEmail(
+      "surattugaslppmsmd@gmail.com",
+      `Surat Tugas Baru dari ${namaKetua}`,
+      { filename, content: docxBuffer },
+      `Ini Hasil Submit form dari ${namaKetua} dengan Email ${formData.email}. Silahkan dicek.`
+    );
+
+    // Query ulang anggota yang baru disimpan
+    const anggotaResult = await pool.query(
+      `SELECT * FROM anggota_surat WHERE surat_type = $1 AND surat_id = $2`,
+      [config.table, suratId]
+    );
+
+    res.json({
+      success: true,
+      record: result.rows[0], // data surat utama
+      anggota: anggotaResult.rows, // list anggota yang tersimpan
+      fileUrl,
+      pdfUrl,
+    });
   } catch (err) {
     console.error("Submit error:", err);
-    res.status(500).json({ error: "Gagal memproses form" });
+    res.status(500).json({ error: "Gagal submit form" });
   }
 });
+
+// === Admin: Update status (read/approve/reject) ===
+app.post("/admin/:table/:id/status", authMiddleware, async (req, res) => {
+  const { table, id } = req.params;
+  const { status } = req.body;
+
+  // validasi table dari mapping
+  const validTables = Object.values(formTableMap).map(f => f.table);
+  if (!validTables.includes(table)) {
+    return res.status(400).json({ error: "Invalid table name" });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE ${table} SET status = $1 WHERE id = $2 RETURNING *`,
+      [status, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Admin: Get all tables (untuk dashboard) ===
+app.get("/admin/all-tables", authMiddleware, async (req, res) => {
+  try {
+    const tables = Object.values(formTableMap).map((f) => f.table);
+    res.json({ tables });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Admin: Get all rows per table ===
+app.get("/admin/:table", authMiddleware, async (req, res) => {
+  const { table } = req.params;
+
+  const validTables = Object.values(formTableMap).map(f => f.table);
+  if (!validTables.includes(table)) {
+    return res.status(400).json({ error: "Invalid table name" });
+  }
+
+  try {
+    const result = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // ===== Start server =====
 const port = process.env.PORT || 5000;
