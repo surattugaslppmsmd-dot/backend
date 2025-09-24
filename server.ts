@@ -23,8 +23,6 @@ app.use(
   })
 );
 
-// ===== Preflight untuk API Dinamis =====
-app.options("/api/*", cors());
 
 // ===== Body Parser =====
 app.use(bodyParser.json());
@@ -381,14 +379,6 @@ app.post("/api/admin/:table/:id/status", authMiddleware, async (req, res) => {
   }
 });
 
-// === Fix untuk CORS preflight admin routes ===
-app.options("/api/admin/*", (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "https://surattugaslppm.com");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  return res.status(200).end();
-});
 
 // === Admin: Get all tables (untuk dashboard) ===
 app.get("/api/admin/all-tables", authMiddleware, async (req: Request, res: Response) => {
