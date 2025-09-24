@@ -361,8 +361,7 @@ app.post("/admin/:table/:id/status", authMiddleware, async (req, res) => {
   const { table, id } = req.params;
   const { status } = req.body;
 
-  // validasi table dari mapping
-  const validTables = Object.values(formTableMap).map(f => f.table);
+  const validTables = Object.values(formTableMap).map((f) => f.table);
   if (!validTables.includes(table)) {
     return res.status(400).json({ error: "Invalid table name" });
   }
@@ -378,28 +377,20 @@ app.post("/admin/:table/:id/status", authMiddleware, async (req, res) => {
   }
 });
 
+// === Fix untuk CORS preflight admin routes ===
+app.options("/admin/*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "https://surattugaslppm.com");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  return res.status(200).end();
+});
+
 // === Admin: Get all tables (untuk dashboard) ===
 app.get("/admin/all-tables", authMiddleware, async (req: Request, res: Response) => {
   try {
     const tables = Object.values(formTableMap).map((f) => f.table);
     res.json({ tables });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// === Admin: Get all rows per table ===
-app.get("/admin/:table", authMiddleware, async (req: Request, res: Response) => {
-  const { table } = req.params;
-
-  const validTables = Object.values(formTableMap).map((f) => f.table);
-  if (!validTables.includes(table)) {
-    return res.status(400).json({ error: "Invalid table name" });
-  }
-
-  try {
-    const result = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
-    res.json(result.rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
