@@ -358,34 +358,52 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
   }
 });
 
+// === Helper: Ambil daftar tabel public dari PostgreSQL ===
+async function getPublicTables(): Promise<string[]> {
+  const result = await pool.query(`
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+    ORDER BY tablename
+  `);
+  return result.rows.map((r) => r.tablename);
+}
+
 // === Admin: Update status (read/approve/reject) ===
 app.post("/api/admin/:table/:id/status", authMiddleware, async (req, res) => {
   const { table, id } = req.params;
   const { status } = req.body;
 
-  const validTables = Object.values(formTableMap).map((f) => f.table);
-  if (!validTables.includes(table)) {
-    return res.status(400).json({ error: "Invalid table name" });
-  }
-
   try {
+    // validasi nama tabel berdasarkan daftar tabel public
+    const validTables = await getPublicTables();
+    if (!validTables.includes(table)) {
+      return res.status(400).json({ error: "Invalid table name" });
+    }
+
     const result = await pool.query(
       `UPDATE ${table} SET status = $1 WHERE id = $2 RETURNING *`,
       [status, id]
     );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Row not found" });
+    }
+
     res.json(result.rows[0]);
   } catch (err: any) {
+    console.error("Update status error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// === Admin: Get all tables (untuk dashboard) ===
+// === Admin: Get all tables (untuk dashboard/sidebar) ===
 app.get("/api/admin/all-tables", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const tables = Object.values(formTableMap).map((f) => f.table);
+    const tables = await getPublicTables(); // ambil tabel langsung dari DB
     res.json({ tables });
   } catch (err: any) {
+    console.error("Fetch tables error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -394,15 +412,16 @@ app.get("/api/admin/all-tables", authMiddleware, async (req: Request, res: Respo
 app.get("/api/admin/:table", authMiddleware, async (req, res) => {
   const { table } = req.params;
 
-  const validTables = Object.values(formTableMap).map(f => f.table);
-  if (!validTables.includes(table)) {
-    return res.status(400).json({ error: "Invalid table name" });
-  }
-
   try {
+    const validTables = await getPublicTables();
+    if (!validTables.includes(table)) {
+      return res.status(400).json({ error: "Invalid table name" });
+    }
+
     const result = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
     res.json(result.rows);
   } catch (err: any) {
+    console.error("Fetch rows error:", err);
     res.status(500).json({ error: err.message });
   }
 });
