@@ -12,54 +12,42 @@ import { generateDocx } from "./services/generateDocument.js";
 
 export const config = { runtime: "nodejs" };
 
-const app = express();
-dotenv.config();
+dotenv.config(); // only once, at top
 
 const allowedOrigins = [
   "https://surattugaslppm.com",
   "https://surattugaslppm.untag-smd.ac.id",
 ];
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin || "";
-  const isAllowed = allowedOrigins.includes(origin);
-
-  res.setHeader("Access-Control-Allow-Origin", isAllowed ? origin : "null");
+// CORS middleware that echoes origin if allowed (works with credentials)
+function corsHandler(req: any, res: any, next: any) {
+  const origin = (req.headers.origin || "") as string;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    // If origin not allowed, explicitly set 'null' (safer than *)
+    res.setHeader("Access-Control-Allow-Origin", "null");
+  }
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,POST,PUT,DELETE,OPTIONS"
-  );
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
+    "Content-Type, Authorization, X-Requested-With"
   );
 
-  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
   next();
-});
+}
+
+const app = express();
+
+// Use CORS early
+app.use(corsHandler);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use((req, res, next) => {
-  const allowedOrigins = [
-    "https://surattugaslppm.com",
-    "https://surattugaslppm.untag-smd.ac.id",
-  ];
-
-  const origin = req.headers.origin || "";
-  const allowed = allowedOrigins.includes(origin) ? origin : "null";
-
-  res.setHeader("Access-Control-Allow-Origin", allowed);
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
-
-  next();
-});
-
 
 const upload = multer({ storage: multer.memoryStorage() });
 // === PostgreSQL Pool ===
