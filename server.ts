@@ -12,33 +12,33 @@ import { generateDocx } from "./services/generateDocument.js";
 
 export const config = { runtime: "nodejs" };
 
+const app = express();
 dotenv.config();
 
 const allowedOrigins = [
   "https://surattugaslppm.com",
-  "https://surattugaslppm.untag-smd.ac.id"
+  "https://surattugaslppm.untag-smd.ac.id",
 ];
 
-function corsHandler(req: any, res: any, next: any) {
+app.use((req, res, next) => {
   const origin = req.headers.origin || "";
+  const isAllowed = allowedOrigins.includes(origin);
 
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "null");
-  }
-
+  res.setHeader("Access-Control-Allow-Origin", isAllowed ? origin : "null");
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,DELETE,OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
+  if (req.method === "OPTIONS") return res.status(200).end();
   next();
-}
-const app = express();
+});
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
