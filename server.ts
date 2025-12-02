@@ -16,7 +16,7 @@ const app = express();
 // ===== CORS GLOBAL =====
 app.use(
   cors({
-    origin: ["https://surattugaslppm.com"],
+    origin: ["https://surattugaslppm.com", "https://surattugaslppm.untag-smd.ac.id"],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
