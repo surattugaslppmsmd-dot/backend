@@ -1,6 +1,4 @@
 import express, { Request, Response, NextFunction } from "express";
-import cors from "cors";
-import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -11,43 +9,40 @@ import { sendEmail } from "./services/sendEmail.js";
 import { generateDocx } from "./services/generateDocument.js";
 import multer from "multer";
 
-dotenv.config();
-const app = express();
+export const config = {
+  runtime: "nodejs",
+};
 
-app.use((req, res, next) => {
+function vercelCors(req: any, res: any) {
   const allowedOrigins = [
     "https://surattugaslppm.com",
-    "https://surattugaslppm.untag-smd.ac.id"
+    "https://surattugaslppm.untag-smd.ac.id",
   ];
 
   const origin = req.headers.origin || "";
-  console.log("Incoming Origin =", origin);
+  const allowed = allowedOrigins.includes(origin) ? origin : "null";
 
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "null");
-  }
-
+  res.setHeader("Access-Control-Allow-Origin", allowed);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") {
-    return res.status(200).end();
+    res.statusCode = 200;
+    res.end();
+    return true;
   }
 
-  next();
-});
+  return false;
+}
 
+dotenv.config();
+const app = express();
 
-
-
-// ===== Body Parser =====
-app.use(bodyParser.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 const upload = multer({ storage: multer.memoryStorage() });
-
 // === PostgreSQL Pool ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -62,43 +57,41 @@ const supabase = createClient(
 const JWT_SECRET = process.env.JWT_SECRET || "";
 
 // ===== JWT Helper =====
-function generateToken(payload: object, expiresIn: number = 3600): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn }) as string;
+function generateToken(payload: object, expiresIn = 3600) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }
+
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers["authorization"];
-  if (!authHeader) return res.status(401).json({ error: "No token" });
-  const token = authHeader.split(" ")[1];
+  const header = req.headers["authorization"];
+  if (!header) return res.status(401).json({ error: "No token" });
+
+  const token = header.split(" ")[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    (req as any).user = decoded;
+    (req as any).user = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
-    return res.status(401).json({ error: "Invalid token" });
+    res.status(401).json({ error: "Invalid token" });
   }
 }
 
 // ===== Admin login =====
-app.post("/api/admin-login", async (req: Request, res: Response) => {
+app.post("/api/admin-login", async (req, res) => {
   try {
     const username = req.body.username?.trim();
     const password = req.body.password?.trim();
+
     if (!username || !password) {
-      return res.status(400).json({ message: "Username dan Password wajib diisi" });
+      return res.status(400).json({ message: "Username dan password wajib diisi" });
     }
 
     const result = await pool.query("SELECT * FROM admin WHERE username = $1", [username]);
-    if (result.rows.length === 0) {
-      return res.status(401).json({ message: "Username tidak ditemukan" });
-    }
+    if (result.rows.length === 0) return res.status(401).json({ message: "Username salah" });
 
     const user = result.rows[0];
     const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      return res.status(401).json({ message: "Password salah" });
-    }
+    if (!match) return res.status(401).json({ message: "Password salah" });
 
-    const token = generateToken({ username: user.username }, 3600);
+    const token = generateToken({ username: user.username });
     res.json({ token, expiresIn: 3600 });
   } catch (err) {
     console.error("Login error:", err);
@@ -445,13 +438,13 @@ app.get("/api/admin/:table", authMiddleware, async (req, res) => {
   }
 });
 
-
-
-const port = process.env.PORT || 5000;
-
-if (process.env.NODE_ENV !== "production") {
-  app.listen(port, () => console.log(`Server running on port ${port}`));
+if (!process.env.VERCEL) {
+  const port = process.env.PORT || 5000;
+  app.listen(port, () => console.log("Running locally on port", port));
 }
 
-
-export default app;
+// Handler untuk Vercel
+export default function handler(req: any, res: any) {
+  if (vercelCors(req, res)) return;
+  return app(req, res);
+}
