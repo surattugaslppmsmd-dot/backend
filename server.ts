@@ -13,15 +13,31 @@ import multer from "multer";
 
 dotenv.config();
 const app = express();
-// ===== CORS GLOBAL =====
-app.use(
-  cors({
-    origin: ["https://surattugaslppm.com", "https://surattugaslppm.untag-smd.ac.id"],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
+
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    "https://surattugaslppm.com",
+    "https://surattugaslppm.untag-smd.ac.id"
+  ];
+
+  const origin: string | undefined = req.headers.origin as string | undefined;
+
+  const allowedOrigin = (origin && allowedOrigins.includes(origin))
+    ? origin
+    : "https://surattugaslppm.untag-smd.ac.id";
+
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
+});
+
 
 
 // ===== Body Parser =====
