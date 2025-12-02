@@ -24,11 +24,9 @@ const allowedOrigins = [
 function corsHandler(req: any, res: any, next: any) {
   const origin = (req.headers.origin || "") as string;
   if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    // If origin not allowed, explicitly set 'null' (safer than *)
-    res.setHeader("Access-Control-Allow-Origin", "null");
-  }
+  res.setHeader("Access-Control-Allow-Origin", origin);
+}
+
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader(
@@ -541,6 +539,25 @@ if (!process.env.VERCEL) {
 
 // Handler untuk Vercel (serverless)
 export default function handler(req: any, res: any) {
-  // CORS already applied via app.use(corsHandler)
-  return (app as any)(req, res);
+  const origin = req.headers.origin || "";
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
+
+  // ==== Fix besar: tangani preflight OPTIONS sebelum Express ====
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
+  // teruskan ke Express
+  return app(req, res);
 }
