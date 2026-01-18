@@ -246,7 +246,7 @@ const formTableMap: Record<
       JudulCiptaan: row.judul_ciptaan || "",
       JenisHakCipta: row.jenis_hki || "",
       No_Tanggal_Permohonan: row.tanggal_permohonan
-        ? new Date(row.tanggal_pengajuan).getFullYear().toString()
+        ? new Date(row.tanggal_permohonan).getFullYear().toString()
         : "",
       Tanggal: row.tanggal
         ? new Date(row.tanggal).toLocaleDateString("id-ID", {
@@ -259,7 +259,7 @@ const formTableMap: Record<
     }),
     template: "Surat Tugas HKI.docx",
     emailSubject: "Surat Tugas HKI",
-    requiredFields: ["email", "nama_ketua", "nidn", "judul_ciptaan", "jenis_hki"],
+    requiredFields: ["email", "nama_ketua", "nidn", "judul_ciptaan", "jenis_hki", "tanggal_permohonan"],
   },
 
   SuratTugasPenelitian: {
@@ -407,10 +407,18 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
       `Form baru dari ${formData.nama_ketua}, email: ${formData.email}.`
     );
 
-    res.json({ success: true, fileUrl, pdfUrl });
+    res.json({
+  success: true,
+  message: "Formulir berhasil dikirim",
+  fileUrl,
+  pdfUrl,
+});
   } catch (err) {
     console.error("Submit error:", err);
-    res.status(500).json({ error: "Gagal submit form" });
+    res.status(500).json({
+  success: false,
+  message: "Gagal submit form",
+});
   }
 });
 
