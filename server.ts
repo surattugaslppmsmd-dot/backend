@@ -243,6 +243,7 @@ const formTableMap: Record<
     mapFn: (row, anggota) => ({
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
+      JabatanFungsional: row.jabatan || "",
       JudulCiptaan: row.judul_ciptaan || "",
       JenisHakCipta: row.jenis_hki || "",
       No_Tanggal_Permohonan: row.tanggal_permohonan
@@ -259,7 +260,7 @@ const formTableMap: Record<
     }),
     template: "Surat Tugas HKI.docx",
     emailSubject: "Surat Tugas HKI",
-    requiredFields: ["email", "nama_ketua", "nidn", "judul_ciptaan", "jenis_hki", "tanggal_permohonan"],
+    requiredFields: ["email", "nama_ketua", "nidn", "judul_ciptaan", "jenis_hki", "tanggal_permohonan", "jabatan"],
   },
 
   SuratTugasPenelitian: {
