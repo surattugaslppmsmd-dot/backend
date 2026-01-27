@@ -441,11 +441,65 @@ app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
 });
 
 app.get("/api/admin/:table", authMiddleware, async (req, res) => {
+  const allowedTables = [
+    "anggota_surat",
+    "halaman_pengesahan",
+    "surat_tugas_buku",
+    "surat_tugas_hki",
+    "surat_tugas_penelitian",
+    "surat_tugas_pkm",
+  ];
+
   const { table } = req.params;
-  const valid = await listTables();
-  if (!valid.includes(table)) return res.status(400).json({ error: "Invalid table" });
-  const r = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
-  res.json(r.rows);
+  const page = Number(req.query.page || 1);
+  const limit = Number(req.query.limit || 20);
+  const search = String(req.query.search || "").trim();
+
+  if (!allowedTables.includes(table)) {
+    return res.status(400).json({ message: "Table tidak valid" });
+  }
+
+  const offset = (page - 1) * limit;
+
+  try {
+    const dataQuery = await pool.query(
+      `
+      SELECT *
+      FROM ${table}
+      WHERE
+        ($1 = '' 
+          OR email ILIKE $2 
+          OR nama_ketua ILIKE $2 
+          OR nama ILIKE $2)
+      ORDER BY id DESC
+      LIMIT $3 OFFSET $4
+      `,
+      [search, `%${search}%`, limit, offset]
+    );
+
+    const totalQuery = await pool.query(
+      `
+      SELECT COUNT(*) 
+      FROM ${table}
+      WHERE
+        ($1 = '' 
+          OR email ILIKE $2 
+          OR nama_ketua ILIKE $2 
+          OR nama ILIKE $2)
+      `,
+      [search, `%${search}%`]
+    );
+
+    res.json({
+      data: dataQuery.rows,
+      total: Number(totalQuery.rows[0].count),
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error("ADMIN PAGINATION ERROR:", err);
+    res.status(500).json({ message: "Gagal mengambil data" });
+  }
 });
 
 app.post("/api/admin/:table/:id/status", authMiddleware, async (req, res) => {
