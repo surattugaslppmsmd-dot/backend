@@ -20,6 +20,7 @@ export const config = { runtime: "nodejs" };
 
 const allowedOrigins = [
   "https://surattugaslppm.com",
+  "https://www.surattugaslppm.com",
   "https://surattugaslppm.untag-smd.ac.id",
   "http://localhost:5173",
 ];
