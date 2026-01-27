@@ -33,9 +33,16 @@ const app = express();
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow no-origin (postman / server-to-server)
       if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
+
+      if (
+        /^https:\/\/(www\.)?surattugaslppm\.com$/.test(origin) ||
+        origin === "https://surattugaslppm.untag-smd.ac.id" ||
+        origin === "http://localhost:5173"
+      ) {
+        return cb(null, true);
+      }
+
       return cb(new Error("Not allowed by CORS"));
     },
     credentials: true,
