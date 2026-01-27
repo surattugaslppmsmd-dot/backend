@@ -34,18 +34,12 @@ app.use(
   cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
-
-      if (
-        /^https:\/\/(www\.)?surattugaslppm\.com$/.test(origin) ||
-        origin === "https://surattugaslppm.untag-smd.ac.id" ||
-        origin === "http://localhost:5173"
-      ) {
-        return cb(null, true);
-      }
-
+      if (allowedOrigins.includes(origin)) return cb(null, true);
       return cb(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
