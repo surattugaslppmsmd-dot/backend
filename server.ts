@@ -239,11 +239,14 @@ const formTableMap: Record<
       NamaKetua: row.nama_ketua || "",
       NIDN: row.nidn || "",
       JabatanFungsional: row.jabatan || "",
-      JudulCiptaan: row.judul_ciptaan || "",
+      judulCiptaan: row.judul_ciptaan || "",
       JenisHakCipta: row.jenis_hki || "",
       No_Tanggal_Permohonan: row.tanggal_permohonan
-        ? new Date(row.tanggal_permohonan).getFullYear().toString()
-        : "",
+        ? new Date(row.tanggal_permohonan).toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }): "",
       Tanggal: row.tanggal
         ? new Date(row.tanggal).toLocaleDateString("id-ID", {
             day: "numeric",
