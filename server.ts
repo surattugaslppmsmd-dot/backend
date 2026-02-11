@@ -13,9 +13,8 @@ import { generateDocx } from "./services/generateDocument.js";
 
 dotenv.config();
 
-// ---------------------------------------------------------
 // CONFIG
-// ---------------------------------------------------------
+
 export const config = { runtime: "nodejs" };
 
 const allowedOrigins = [
@@ -25,9 +24,8 @@ const allowedOrigins = [
   "http://localhost:5173",
 ];
 
-// ---------------------------------------------------------
 // EXPRESS APP
-// ---------------------------------------------------------
+
 const app = express();
 
 app.use(
@@ -48,9 +46,8 @@ app.use(express.urlencoded({ extended: true }));
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-// ---------------------------------------------------------
 // DATABASE
-// ---------------------------------------------------------
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl:
@@ -59,17 +56,15 @@ const pool = new Pool({
       : false,
 });
 
-// ---------------------------------------------------------
 // SUPABASE
-// ---------------------------------------------------------
+
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ---------------------------------------------------------
 // JWT
-// ---------------------------------------------------------
+
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
 function generateToken(payload: object, expiresIn = 3600) {
@@ -91,9 +86,8 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-// ---------------------------------------------------------
 // ADMIN LOGIN
-// ---------------------------------------------------------
+
 app.post("/api/admin-login", async (req, res) => {
   try {
     const username = String(req.body.username || "").trim();
@@ -120,9 +114,8 @@ app.post("/api/admin-login", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------
 // GENERIC GET TABLE
-// ---------------------------------------------------------
+
 async function getAll(table: string) {
   const r = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
   return r.rows;
@@ -151,7 +144,7 @@ app.get("/api/:table", async (req, res) => {
   }
 });
 
-// ===== FORM CONFIG =====
+//  FORM CONFIG 
 const formTableMap: Record<
   string,
   {
@@ -318,8 +311,9 @@ const formTableMap: Record<
   },
 };
 
-// ===== Submit Handler =====
-// ------------------ FORM SUBMIT ------------------
+//  Submit Handler 
+
+//  FORM SUBMIT
 app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => {
   try {
     const { formType } = req.params;
@@ -337,7 +331,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
       formData.anggota = [];
     }
 
-    // --- Generate DOCX ---
+    //  Generate DOCX 
     const mapped = config.mapFn(formData, formData.anggota);
     const docxPath = await generateDocx(config.template, mapped);
     const docxBuffer = fs.readFileSync(docxPath);
@@ -356,7 +350,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     const fileUrl =
       `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
 
-    // Upload PDF (optional)
+    // Upload PDF
     let pdfUrl = null;
     if (uploadedFile) {
       const pdfName = `${formData.nama_ketua}_${Date.now()}_${uploadedFile.originalname}`;
@@ -425,7 +419,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
   }
 });
 
-// ------------------ ADMIN ENDPOINTS ------------------
+//  ADMIN ENDPOINTS 
 async function listTables() {
   const r = await pool.query(`
     SELECT tablename
@@ -520,13 +514,13 @@ app.post("/api/admin/:table/:id/status", authMiddleware, async (req, res) => {
   res.json(r.rows[0]);
 });
 
-// ------------------ LOCAL MODE (dev) ------------------
+//  LOCAL MODE (dev) 
 if (!process.env.VERCEL) {
   const port = process.env.PORT || 5000;
   app.listen(port, () => console.log("Running locally on port", port));
 }
 
-// ------------------ VERCEL HANDLER ------------------
+//  VERCEL HANDLER 
 export default function handler(req: any, res: any) {
   return app(req, res);
 }
