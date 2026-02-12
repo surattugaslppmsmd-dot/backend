@@ -423,6 +423,16 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
 });
 
 //  ADMIN ENDPOINTS 
+const ADMIN_TABLES = [
+  "anggota_surat",
+  "halaman_pengesahan",
+  "surat_tugas_buku",
+  "surat_tugas_hki",
+  "surat_tugas_penelitian",
+  "surat_tugas_pkm",
+];
+
+// list all tables (admin)
 async function listTables() {
   const r = await pool.query(`
     SELECT tablename
@@ -433,89 +443,121 @@ async function listTables() {
   return r.rows.map((x) => x.tablename);
 }
 
+// ---------- GET ALL TABLE NAMES ----------
 app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
-  res.json({ tables: await listTables() });
+  try {
+    res.json({ tables: await listTables() });
+  } catch (err) {
+    console.error("LIST TABLE ERROR:", err);
+    res.status(500).json({ message: "Gagal mengambil daftar tabel" });
+  }
 });
 
+// ---------- GET PAGINATED DATA (NO COUNT) ----------
 app.get("/api/admin/:table", authMiddleware, async (req, res) => {
-  const allowedTables = [
-    "anggota_surat",
-    "halaman_pengesahan",
-    "surat_tugas_buku",
-    "surat_tugas_hki",
-    "surat_tugas_penelitian",
-    "surat_tugas_pkm",
-  ];
-
   const { table } = req.params;
-  const page = Number(req.query.page || 1);
-  const limit = Number(req.query.limit || 20);
+  const page = Math.max(Number(req.query.page || 1), 1);
+  const limit = Math.min(Number(req.query.limit || 20), 100);
   const search = String(req.query.search || "").trim();
 
-  if (!allowedTables.includes(table)) {
+  if (!ADMIN_TABLES.includes(table)) {
     return res.status(400).json({ message: "Table tidak valid" });
   }
 
   const offset = (page - 1) * limit;
 
   try {
-    const dataQuery = await pool.query(
+    const { rows } = await pool.query(
       `
       SELECT *
       FROM ${table}
-      WHERE
-        ($1 = '' 
-          OR email ILIKE $2 
-          OR nama_ketua ILIKE $2 
-          OR nama ILIKE $2)
+      WHERE (
+        $1 = ''
+        OR email ILIKE $2
+        OR nama_ketua ILIKE $2
+        OR nama ILIKE $2
+      )
       ORDER BY id DESC
       LIMIT $3 OFFSET $4
       `,
       [search, `%${search}%`, limit, offset]
     );
 
-    const totalQuery = await pool.query(
-      `
-      SELECT COUNT(*) 
-      FROM ${table}
-      WHERE
-        ($1 = '' 
-          OR email ILIKE $2 
-          OR nama_ketua ILIKE $2 
-          OR nama ILIKE $2)
-      `,
-      [search, `%${search}%`]
-    );
-
     res.json({
-      data: dataQuery.rows,
-      total: Number(totalQuery.rows[0].count),
+      data: rows,
       page,
       limit,
+      hasMore: rows.length === limit,
     });
   } catch (err) {
-    console.error("ADMIN PAGINATION ERROR:", err);
+    console.error("ADMIN DATA ERROR:", err);
     res.status(500).json({ message: "Gagal mengambil data" });
   }
 });
 
-app.post("/api/admin/:table/:id/status", authMiddleware, async (req, res) => {
-  const { table, id } = req.params;
-  const { status } = req.body;
+app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
+  const { table } = req.params;
+  const search = String(req.query.search || "").trim();
 
-  const valid = await listTables();
-  if (!valid.includes(table)) return res.status(400).json({ error: "Invalid table" });
+  if (!ADMIN_TABLES.includes(table)) {
+    return res.status(400).json({ message: "Table tidak valid" });
+  }
 
-  const r = await pool.query(
-    `UPDATE ${table} SET status=$1 WHERE id=$2 RETURNING *`,
-    [status, id]
-  );
+  try {
+    const r = await pool.query(
+      `
+      SELECT COUNT(*)::int AS total
+      FROM ${table}
+      WHERE (
+        $1 = ''
+        OR email ILIKE $2
+        OR nama_ketua ILIKE $2
+        OR nama ILIKE $2
+      )
+      `,
+      [search, `%${search}%`]
+    );
 
-  if (r.rows.length === 0)
-    return res.status(404).json({ error: "Row not found" });
-
-  res.json(r.rows[0]);
+    res.json({ total: r.rows[0].total });
+  } catch (err) {
+    console.error("ADMIN COUNT ERROR:", err);
+    res.status(500).json({ message: "Gagal menghitung total data" });
+  }
 });
+
+// ---------- UPDATE STATUS ----------
+app.post(
+  "/api/admin/:table/:id/status",
+  authMiddleware,
+  async (req, res) => {
+    const { table, id } = req.params;
+    const { status } = req.body;
+
+    if (!ADMIN_TABLES.includes(table)) {
+      return res.status(400).json({ error: "Invalid table" });
+    }
+
+    if (!status) {
+      return res.status(400).json({ error: "Status tidak boleh kosong" });
+    }
+
+    try {
+      const r = await pool.query(
+        `UPDATE ${table} SET status=$1 WHERE id=$2 RETURNING *`,
+        [status, id]
+      );
+
+      if (r.rows.length === 0) {
+        return res.status(404).json({ error: "Data tidak ditemukan" });
+      }
+
+      res.json(r.rows[0]);
+    } catch (err) {
+      console.error("UPDATE STATUS ERROR:", err);
+      res.status(500).json({ error: "Gagal update status" });
+    }
+  }
+);
 
 //  LOCAL MODE (dev) 
 if (!process.env.VERCEL) {
