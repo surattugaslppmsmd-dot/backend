@@ -529,7 +529,7 @@ app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
     res.json({ total: r.rows[0].total });
   } catch (err) {
     console.error("ADMIN COUNT ERROR:", err);
-    res.status(500).json({ message: "Gagal menghitung total data" });
+    res.status(500).json({ message: "Gagal menghitung total data, karena saya helper capek. huhu:(" });
   }
 });
 
