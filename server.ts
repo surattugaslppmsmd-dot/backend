@@ -453,6 +453,15 @@ app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
   }
 });
 
+const SEARCHABLE_COLUMNS: Record<string, string[]> = {
+  anggota_surat: ["nama", "nidn"],
+  halaman_pengesahan: ["email", "nama_ketua"],
+  surat_tugas_buku: ["email", "nama_ketua"],
+  surat_tugas_hki: ["email", "nama_ketua"],
+  surat_tugas_penelitian: ["email", "nama_ketua"],
+  surat_tugas_pkm: ["email", "nama_ketua"],
+};
+
 //  GET PAGINATED DATA (NO COUNT) 
 app.get("/api/admin/:table", authMiddleware, async (req, res) => {
   const { table } = req.params;
@@ -465,22 +474,24 @@ app.get("/api/admin/:table", authMiddleware, async (req, res) => {
   }
 
   const offset = (page - 1) * limit;
+  const cols = SEARCHABLE_COLUMNS[table] || [];
+  const where =
+    search && cols.length
+      ? `WHERE (${cols.map((c) => `${c} ILIKE $1`).join(" OR ")})`
+      : "";
+
+  const params = search ? [`%${search}%`, limit, offset] : [limit, offset];
 
   try {
     const { rows } = await pool.query(
       `
       SELECT *
       FROM ${table}
-      WHERE (
-        $1 = ''
-        OR email ILIKE $2
-        OR nama_ketua ILIKE $2
-        OR nama ILIKE $2
-      )
+      ${where}
       ORDER BY id DESC
-      LIMIT $3 OFFSET $4
+      LIMIT $${params.length - 1} OFFSET $${params.length}
       `,
-      [search, `%${search}%`, limit, offset]
+      params
     );
 
     res.json({
@@ -503,19 +514,16 @@ app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
     return res.status(400).json({ message: "Table tidak valid" });
   }
 
+  const cols = SEARCHABLE_COLUMNS[table] || [];
+  const where =
+    search && cols.length
+      ? `WHERE (${cols.map((c) => `${c} ILIKE $1`).join(" OR ")})`
+      : "";
+
   try {
     const r = await pool.query(
-      `
-      SELECT COUNT(*)::int AS total
-      FROM ${table}
-      WHERE (
-        $1 = ''
-        OR email ILIKE $2
-        OR nama_ketua ILIKE $2
-        OR nama ILIKE $2
-      )
-      `,
-      [search, `%${search}%`]
+      `SELECT COUNT(*)::int AS total FROM ${table} ${where}`,
+      search ? [`%${search}%`] : []
     );
 
     res.json({ total: r.rows[0].total });
@@ -524,6 +532,7 @@ app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Gagal menghitung total data" });
   }
 });
+
 
 // UPDATE STATUS 
 app.post(
