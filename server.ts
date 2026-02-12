@@ -443,7 +443,7 @@ async function listTables() {
   return r.rows.map((x) => x.tablename);
 }
 
-// ---------- GET ALL TABLE NAMES ----------
+//  GET ALL TABLE NAMES 
 app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
   try {
     res.json({ tables: await listTables() });
@@ -453,7 +453,7 @@ app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
   }
 });
 
-// ---------- GET PAGINATED DATA (NO COUNT) ----------
+//  GET PAGINATED DATA (NO COUNT) 
 app.get("/api/admin/:table", authMiddleware, async (req, res) => {
   const { table } = req.params;
   const page = Math.max(Number(req.query.page || 1), 1);
@@ -525,7 +525,7 @@ app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
   }
 });
 
-// ---------- UPDATE STATUS ----------
+// UPDATE STATUS 
 app.post(
   "/api/admin/:table/:id/status",
   authMiddleware,
