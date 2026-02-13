@@ -11,11 +11,5 @@
       "src": "/api/(.*)",
       "dest": "server.ts"
     }
-  ],
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "https://backend-r25c97e0f-surattugaslppmsmd-dots-projects.vercel.app/api/$1"
-    }
   ]
 }
