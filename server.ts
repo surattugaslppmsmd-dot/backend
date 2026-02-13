@@ -12,55 +12,14 @@ import { generateDocx } from "./services/generateDocument.js";
 
 dotenv.config();
 
-// CONFIG
-
-const allowedOrigins = [
-  "https://surattugaslppm.com",
-  "https://www.surattugaslppm.com",
-  "https://surattugaslppm.untag-smd.ac.id",
-  "https://www.surattugaslppm.untag-smd.ac.id",
-  "http://localhost:5173",
-];
-
 // EXPRESS APP
 
 const app = express();
+
 app.use(express.json());
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  const allowedOrigins = [
-    "https://surattugaslppm.com",
-    "https://www.surattugaslppm.com",
-    "https://surattugaslppm.untag-smd.ac.id",
-    "http://localhost:5173",
-  ];
-
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,POST,PUT,DELETE,OPTIONS"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
-  );
-
-  // HANDLE PREFLIGHT
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-
-  next();
-});
-
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.options("*", (_, res) => res.status(200).end());
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 // DATABASE
