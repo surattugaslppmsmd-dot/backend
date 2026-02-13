@@ -13,9 +13,14 @@ import { generateDocx } from "./services/generateDocument.js";
 dotenv.config();
 
 // EXPRESS APP
-
+const allowedOrigins = new Set([
+  "https://surattugaslppm.com",
+  "https://www.surattugaslppm.com",
+  "https://surattugaslppm.untag-smd.ac.id",
+  "https://www.surattugaslppm.untag-smd.ac.id",
+  "http://localhost:5173",
+]);
 const app = express();
-
 app.use(express.json());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
