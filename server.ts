@@ -529,7 +529,7 @@ app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
     res.json({ total: r.rows[0].total });
   } catch (err) {
     console.error("ADMIN COUNT ERROR:", err);
-    res.status(500).json({ message: "Gagal menghitung total data, karena saya helper capek. huhu:(" });
+    res.status(500).json({ message: "Gagal menghitung total data, karena saya capek :(" });
   }
 });
 
@@ -547,7 +547,7 @@ app.post(
     }
 
     if (!status) {
-      return res.status(400).json({ error: "Status tidak boleh kosong" });
+      return res.status(400).json({ error: "Di isi dong status nya" });
     }
 
     try {
@@ -557,7 +557,7 @@ app.post(
       );
 
       if (r.rows.length === 0) {
-        return res.status(404).json({ error: "Data tidak ditemukan" });
+        return res.status(404).json({ error: "Mana ya data nya coba cari yang lain." });
       }
 
       res.json(r.rows[0]);
