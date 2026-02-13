@@ -6,7 +6,6 @@ import bcrypt from "bcryptjs";
 import { Pool } from "pg";
 import fs from "fs";
 import multer from "multer";
-import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "./services/sendEmail.js";
 import { generateDocx } from "./services/generateDocument.js";
@@ -14,8 +13,6 @@ import { generateDocx } from "./services/generateDocument.js";
 dotenv.config();
 
 // CONFIG
-
-export const config = { runtime: "nodejs" };
 
 const allowedOrigins = [
   "https://surattugaslppm.com",
@@ -28,31 +25,41 @@ const allowedOrigins = [
 // EXPRESS APP
 
 const app = express();
-app.options("*", cors());
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, origin);
-      }
-
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-// LOG 
+app.use(express.json());
 app.use((req, res, next) => {
-  console.log("Origin:", req.headers.origin);
+  const origin = req.headers.origin;
+
+  const allowedOrigins = [
+    "https://surattugaslppm.com",
+    "https://www.surattugaslppm.com",
+    "https://surattugaslppm.untag-smd.ac.id",
+    "http://localhost:5173",
+  ];
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,DELETE,OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  // HANDLE PREFLIGHT
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
   next();
 });
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -472,7 +479,6 @@ const SEARCHABLE_COLUMNS: Record<string, string[]> = {
   surat_tugas_pkm: ["email", "nama_ketua"],
 };
 
-//  GET PAGINATED DATA (NO COUNT) 
 app.get("/api/admin/:table", authMiddleware, async (req, res) => {
   const { table } = req.params;
   const page = Math.max(Number(req.query.page || 1), 1);
