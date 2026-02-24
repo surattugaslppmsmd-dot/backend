@@ -1,4 +1,3 @@
-// backend/server.ts
 import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
@@ -6,29 +5,36 @@ import bcrypt from "bcryptjs";
 import { Pool } from "pg";
 import fs from "fs";
 import multer from "multer";
+import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
+
 import { sendEmail } from "./services/sendEmail.js";
 import { generateDocx } from "./services/generateDocument.js";
 
 dotenv.config();
 
-// EXPRESS APP
-const allowedOrigins = new Set([
-  "https://surattugaslppm.com",
-  "https://www.surattugaslppm.com",
-  "https://surattugaslppm.untag-smd.ac.id",
-  "https://www.surattugaslppm.untag-smd.ac.id",
-  "http://localhost:5173",
-]);
+// ================= INIT =================
 const app = express();
-app.use(express.json());
+
+app.use(
+  cors({
+    origin: [
+      "https://surattugaslppm.com",
+      "https://www.surattugaslppm.com"
+    ],
+    methods: ["GET", "POST"],
+    credentials: false,
+  })
+);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
 
-// DATABASE
-
+// ================= DATABASE (POSTGRES) =================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl:
@@ -37,24 +43,25 @@ const pool = new Pool({
       : false,
 });
 
-// SUPABASE
-
+// ================= SUPABASE =================
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// JWT
+// ================= JWT =================
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET is not defined");
+}
 
-const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 function generateToken(payload: object, expiresIn = 3600) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }
 
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  let tokenHeader = req.headers["authorization"];
-
+  const tokenHeader = req.headers["authorization"];
   if (!tokenHeader) return res.status(401).json({ error: "No token" });
 
   const token = String(tokenHeader).split(" ")[1] || tokenHeader;
@@ -67,65 +74,35 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-// ADMIN LOGIN
-
+// ================= ADMIN LOGIN =================
 app.post("/api/admin-login", async (req, res) => {
   try {
-    const username = String(req.body.username || "").trim();
-    const password = String(req.body.password || "").trim();
+    const { username, password } = req.body;
 
-    const result = await pool.query("SELECT * FROM admin WHERE username=$1", [
-      username,
-    ]);
+    const result = await pool.query(
+      "SELECT * FROM admin WHERE username=$1",
+      [username]
+    );
 
-    if (result.rows.length === 0)
-      return res.status(401).json({ message: "Username salah" });
+    if (!result.rows.length)
+      return res.status(401).json({ message: "Username salah. coba ulang deh" });
 
     const user = result.rows[0];
-    const match = await bcrypt.compare(password, user.password_hash);
 
-    if (!match) return res.status(401).json({ message: "Password salah" });
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match)
+      return res.status(401).json({ message: "Password salah. coba ulang deh" });
 
     const token = generateToken({ username: user.username });
 
-    return res.json({ token, expiresIn: 3600 });
+    res.json({ token, expiresIn: 3600 });
   } catch (e) {
-    console.error("Login error:", e);
-    res.status(500).json({ message: "Login gagal" });
+    console.error(e);
+    res.status(500).json({ message: "Login gagal. kenapa ya" });
   }
 });
 
-// GENERIC GET TABLE
-
-async function getAll(table: string) {
-  const r = await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
-  return r.rows;
-}
-
-app.get("/api/:table", async (req, res) => {
-  const allowedTables = [
-    "anggota_surat",
-    "halaman_pengesahan",
-    "surat_tugas_buku",
-    "surat_tugas_hki",
-    "surat_tugas_penelitian",
-    "surat_tugas_pkm",
-  ];
-
-  const { table } = req.params;
-
-  if (!allowedTables.includes(table))
-    return res.status(400).json({ message: "Table tidak valid" });
-
-  try {
-    return res.json(await getAll(table));
-  } catch (err) {
-    console.error("GET error:", err);
-    return res.status(500).json({ message: "Gagal mengambil data" });
-  }
-});
-
-//  FORM CONFIG 
+// ================= FORM CONFIG =================
 const formTableMap: Record<
   string,
   {
@@ -294,63 +271,105 @@ const formTableMap: Record<
     requiredFields: ["email", "nama_ketua", "nidn", "judul", "tanggal"],
   },
 };
-
-//  Submit Handler 
-
-//  FORM SUBMIT
 app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => {
   try {
     const { formType } = req.params;
     const config = formTableMap[formType];
 
-    if (!config) return res.status(400).json({ error: "Form type tidak valid" });
-
-    let formData = req.body || {};
-    const uploadedFile = (req as any).file;
-
-    // parse anggota
-    try {
-      formData.anggota = JSON.parse(formData.anggota || "[]");
-    } catch {
-      formData.anggota = [];
+    if (!config) {
+      return res.status(400).json({
+        success: false,
+        message: "Form tidak valid",
+      });
     }
 
-    //  Generate DOCX 
-    const mapped = config.mapFn(formData, formData.anggota);
-    const docxPath = await generateDocx(config.template, mapped);
-    const docxBuffer = fs.readFileSync(docxPath);
+    let data = req.body;
 
-    // Upload DOCX
-    const filename = `${formData.nama_ketua || "Unknown"}_${Date.now()}.docx`;
+    // ================= VALIDASI =================
+    for (const field of config.requiredFields) {
+      if (!data[field]) {
+        return res.status(400).json({
+          success: false,
+          message: `Field ${field} wajib diisi`,
+        });
+      }
+    }
+
+    // ================= PARSE ANGGOTA =================
+    let anggota: any[] = [];
+    try {
+      anggota = JSON.parse(data.anggota || "[]");
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: "Format anggota tidak valid",
+      });
+    }
+
+    // ================= VALIDASI FILE =================
+    const uploadedFile = req.file;
+
+    if (uploadedFile) {
+      const allowed = [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ];
+
+      if (!allowed.includes(uploadedFile.mimetype)) {
+        return res.status(400).json({
+          success: false,
+          message: "File harus PDF atau DOCX",
+        });
+      }
+    }
+
+    // ================= GENERATE DOCX =================
+    const mapped = config.mapFn(data, anggota);
+
+    const docxPath = await generateDocx(config.template, mapped);
+    const buffer = await fs.promises.readFile(docxPath);
+
+    // ================= UPLOAD DOCX =================
+    const filename = `${data.nama_ketua || "user"}_${Date.now()}.docx`;
+
     const { error: uploadErr } = await supabase.storage
       .from("surat-tugas-files")
-      .upload(filename, docxBuffer, {
+      .upload(filename, buffer, {
         contentType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       });
 
-    if (uploadErr) throw uploadErr;
+    if (uploadErr) {
+      throw new Error("Upload DOCX gagal");
+    }
 
-    const fileUrl =
-      `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
+    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
 
-    // Upload PDF
-    let pdfUrl = null;
+    // ================= UPLOAD PDF (OPTIONAL) =================
+    let pdfUrl: string | null = null;
+
     if (uploadedFile) {
-      const pdfName = `${formData.nama_ketua}_${Date.now()}_${uploadedFile.originalname}`;
-      const { error: pdfError } = await supabase.storage
+      const pdfName = `${data.nama_ketua}_${Date.now()}_${uploadedFile.originalname}`;
+
+      const { error: pdfErr } = await supabase.storage
         .from("uploads")
         .upload(pdfName, uploadedFile.buffer, {
           contentType: uploadedFile.mimetype,
         });
-      if (!pdfError) {
-        pdfUrl =
-          `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfName}`;
+
+      if (!pdfErr) {
+        pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfName}`;
       }
     }
 
-    // Insert into DB
-    const safeData = { ...formData, file_url: fileUrl, pdf_url: pdfUrl, status: "belum_dibaca" };
+    // ================= INSERT DB =================
+    const safeData = {
+      ...data,
+      file_url: fileUrl,
+      pdf_url: pdfUrl,
+      status: "belum_dibaca",
+    };
+
     delete safeData.anggota;
 
     const cols = Object.keys(safeData);
@@ -358,203 +377,72 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(",");
 
     const result = await pool.query(
-      `INSERT INTO ${config.table} (${cols.join(",")}) VALUES (${placeholders}) RETURNING id`,
+      `INSERT INTO ${config.table} (${cols.join(",")})
+       VALUES (${placeholders}) RETURNING id`,
       vals
     );
 
-    const suratId = result.rows[0].id;
+    const id = result.rows[0].id;
 
-    // Insert anggota
-    for (const ag of formData.anggota) {
+    // ================= INSERT ANGGOTA =================
+    for (const ag of anggota) {
       await pool.query(
-        `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaanggota) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [config.table, suratId, ag.name || "", ag.nidn || "", ag.idsintaAnggota || ""]
+        `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn)
+         VALUES ($1,$2,$3,$4)` ,
+        [config.table, id, ag.name || "", ag.nidn || ""]
       );
     }
 
-    // Send emails
-    await sendEmail(
-      formData.email,
-      "Konfirmasi Pengisian Form LPPM",
-      null,
-      "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
-    );
-
-    await sendEmail(
-      "surattugaslppmsmd@gmail.com",
-      `Surat Tugas Baru dari ${formData.nama_ketua}`,
-      { filename, content: docxBuffer },
-      `Form baru dari ${formData.nama_ketua}, email: ${formData.email}.`
-    );
-
-    res.json({
-  success: true,
-  message: "Formulir berhasil dikirim",
-  fileUrl,
-  pdfUrl,
-});
-  } catch (err) {
-    console.error("Submit error:", err);
-    res.status(500).json({
-  success: false,
-  message: "Gagal submit form",
-});
-  }
-});
-
-//  ADMIN ENDPOINTS 
-const ADMIN_TABLES = [
-  "anggota_surat",
-  "halaman_pengesahan",
-  "surat_tugas_buku",
-  "surat_tugas_hki",
-  "surat_tugas_penelitian",
-  "surat_tugas_pkm",
-];
-
-// list all tables (admin)
-async function listTables() {
-  const r = await pool.query(`
-    SELECT tablename
-    FROM pg_tables
-    WHERE schemaname = 'public'
-    ORDER BY tablename
-  `);
-  return r.rows.map((x) => x.tablename);
-}
-
-//  GET ALL TABLE NAMES 
-app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
-  try {
-    res.json({ tables: await listTables() });
-  } catch (err) {
-    console.error("LIST TABLE ERROR:", err);
-    res.status(500).json({ message: "Gagal mengambil daftar tabel" });
-  }
-});
-
-const SEARCHABLE_COLUMNS: Record<string, string[]> = {
-  anggota_surat: ["nama", "nidn"],
-  halaman_pengesahan: ["email", "nama_ketua"],
-  surat_tugas_buku: ["email", "nama_ketua"],
-  surat_tugas_hki: ["email", "nama_ketua"],
-  surat_tugas_penelitian: ["email", "nama_ketua"],
-  surat_tugas_pkm: ["email", "nama_ketua"],
-};
-
-app.get("/api/admin/:table", authMiddleware, async (req, res) => {
-  const { table } = req.params;
-  const page = Math.max(Number(req.query.page || 1), 1);
-  const limit = Math.min(Number(req.query.limit || 20), 100);
-  const search = String(req.query.search || "").trim();
-
-  if (!ADMIN_TABLES.includes(table)) {
-    return res.status(400).json({ message: "Table tidak valid" });
-  }
-
-  const offset = (page - 1) * limit;
-  const cols = SEARCHABLE_COLUMNS[table] || [];
-  const where =
-    search && cols.length
-      ? `WHERE (${cols.map((c) => `${c} ILIKE $1`).join(" OR ")})`
-      : "";
-
-  const params = search ? [`%${search}%`, limit, offset] : [limit, offset];
-
-  try {
-    const { rows } = await pool.query(
-      `
-      SELECT *
-      FROM ${table}
-      ${where}
-      ORDER BY id DESC
-      LIMIT $${params.length - 1} OFFSET $${params.length}
-      `,
-      params
-    );
-
-    res.json({
-      data: rows,
-      page,
-      limit,
-      hasMore: rows.length === limit,
-    });
-  } catch (err) {
-    console.error("ADMIN DATA ERROR:", err);
-    res.status(500).json({ message: "Gagal mengambil data" });
-  }
-});
-
-app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
-  const { table } = req.params;
-  const search = String(req.query.search || "").trim();
-
-  if (!ADMIN_TABLES.includes(table)) {
-    return res.status(400).json({ message: "Table tidak valid" });
-  }
-
-  const cols = SEARCHABLE_COLUMNS[table] || [];
-  const where =
-    search && cols.length
-      ? `WHERE (${cols.map((c) => `${c} ILIKE $1`).join(" OR ")})`
-      : "";
-
-  try {
-    const r = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM ${table} ${where}`,
-      search ? [`%${search}%`] : []
-    );
-
-    res.json({ total: r.rows[0].total });
-  } catch (err) {
-    console.error("ADMIN COUNT ERROR:", err);
-    res.status(500).json({ message: "Gagal menghitung total data, karena saya capek :(" });
-  }
-});
-
-
-// UPDATE STATUS 
-app.post(
-  "/api/admin/:table/:id/status",
-  authMiddleware,
-  async (req, res) => {
-    const { table, id } = req.params;
-    const { status } = req.body;
-
-    if (!ADMIN_TABLES.includes(table)) {
-      return res.status(400).json({ error: "Invalid table" });
-    }
-
-    if (!status) {
-      return res.status(400).json({ error: "Di isi dong status nya" });
-    }
-
+    // ================= EMAIL USER =================
     try {
-      const r = await pool.query(
-        `UPDATE ${table} SET status=$1 WHERE id=$2 RETURNING *`,
-        [status, id]
+      await sendEmail(
+        data.email,
+        "Konfirmasi Pengisian Form LPPM",
+        null,
+        "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
       );
-
-      if (r.rows.length === 0) {
-        return res.status(404).json({ error: "Mana ya data nya coba cari yang lain." });
-      }
-
-      res.json(r.rows[0]);
-    } catch (err) {
-      console.error("UPDATE STATUS ERROR:", err);
-      res.status(500).json({ error: "Gagal update status" });
+    } catch (e) {
+      console.error("EMAIL USER ERROR:", e);
     }
+
+    // ================= EMAIL ADMIN =================
+    try {
+      await sendEmail(
+        "surattugaslppmsmd@gmail.com",
+        `Surat Tugas Baru dari ${data.nama_ketua}`,
+        {
+          filename,
+          content: buffer,
+        },
+        `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
+      );
+    } catch (e) {
+      console.error("EMAIL ADMIN ERROR:", e);
+    }
+
+    // ================= HAPUS FILE TEMP =================
+    fs.unlinkSync(docxPath);
+
+    res.json({
+      success: true,
+      message: "Form berhasil dikirim",
+      fileUrl,
+      pdfUrl,
+    });
+
+  } catch (err: any) {
+    console.error("SUBMIT ERROR:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message || "Terjadi kesalahan di server",
+    });
   }
-);
+});
 
-//  LOCAL MODE (dev) 
+// ================= RUN =================
 if (!process.env.VERCEL) {
-  const port = process.env.PORT || 5000;
-  app.listen(port, () => console.log("Running locally on port", port));
+  app.listen(5000, () => console.log("Server running"));
 }
 
-//  VERCEL HANDLER 
-export default function handler(req: any, res: any) {
-  return app(req, res);
-}
+export default app;

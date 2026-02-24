@@ -25,15 +25,18 @@
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "express-basic-auth": "^1.2.1",
+    "express-rate-limit": "^8.2.1",
     "jsonwebtoken": "^9.0.2",
     "libreoffice-convert": "^1.7.0",
     "mammoth": "^1.11.0",
     "multer": "^2.0.2",
+    "mysql2": "^3.17.4",
     "nodemailer": "^7.0.6",
     "pdf-lib": "^1.17.1",
     "pg": "^8.16.3",
     "pizzip": "^3.2.0",
-    "puppeteer": "^24.22.0"
+    "puppeteer": "^24.22.0",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

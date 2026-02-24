@@ -26,14 +26,12 @@ interface DocData {
 
 export async function generateDocx(
   templateFile: string,
-  data?: DocData // <- pastikan bisa undefined
+  data?: DocData 
 ): Promise<string> {
-  if (!data) data = {}; // <- jaga jika undefined
+  if (!data) data = {};
 
-  // pastikan anggota selalu array
   if (!Array.isArray(data.anggota)) data.anggota = [];
 
-  // tambahkan nomor untuk looping
   const anggotaList: Anggota[] = data.anggota;
   data.anggota = anggotaList.map((a, i) => ({
     name: a?.name || "",
