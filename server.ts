@@ -457,45 +457,33 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
         )
       );
     }
-    res.setHeader("Connection", "close");
-    res.status(200).json({
-      success: true,
-      message: "Form berhasil dikirim",
-      fileUrl,
-      pdfUrl,
-    });
-    // ================= EMAIL =================
-    setImmediate(async () => {
-      try {
-        await sendEmail(
-          data.email,
-          "Konfirmasi Pengisian Form LPPM",
-          null,
-          "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
-        );
-      } catch (e) {
-        console.error("EMAIL USER ERROR:", e);
-      }
+    try {
+  await Promise.allSettled([
+    sendEmail(
+      data.email,
+      "Konfirmasi Pengisian Form LPPM",
+      null,
+      "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+    ),
+    sendEmail(
+      "surattugaslppmsmd@gmail.com",
+      `Surat Tugas Baru dari ${data.nama_ketua}`,
+      { filename, content: buffer },
+      `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
+    ),
+  ]);
+} catch (e) {
+  console.error("EMAIL ERROR:", e);
+}
 
-      try {
-        await sendEmail(
-          "surattugaslppmsmd@gmail.com",
-          `Surat Tugas Baru dari ${data.nama_ketua}`,
-          { filename, content: buffer },
-          `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
-        );
-      } catch (e) {
-        console.error("EMAIL ADMIN ERROR:", e);
-      }
-
-      try {
-        if (fs.existsSync(docxPath)) {
-          fs.unlinkSync(docxPath);
-        }
-      } catch (e) {
-        console.error("error:", e);
-      }
-    });
+// ================= RESPONSE=================
+res.setHeader("Connection", "close");
+return res.status(200).json({
+  success: true,
+  message: "Form berhasil dikirim",
+  fileUrl,
+  pdfUrl,
+});
 
   } catch (err: any) {
     console.error("SUBMIT ERROR:", err);
