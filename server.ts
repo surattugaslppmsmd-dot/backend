@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from "express";
-import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { Pool } from "pg";
@@ -11,10 +10,14 @@ import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "./services/sendEmail.js";
 import { generateDocx } from "./services/generateDocument.js";
 
-dotenv.config();
-
 // ================= INIT =================
 const app = express();
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 app.use(
   cors({
