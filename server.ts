@@ -443,18 +443,17 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     const id = result.rows[0].id;
 
     // ================= INSERT ANGGOTA =================
-    for (const ag of anggota) {
+    if (anggota.length > 0) {
       await Promise.all(
         anggota.map((ag: any) =>
           pool.query(
-            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn)
-            VALUES ($1,$2,$3,$4)`,
-            [config.table, id, ag.name, ag.nidn]
+            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaanggota)
+            VALUES ($1,$2,$3,$4,$5)`,
+            [config.table, id, ag.name, ag.nidn, ag.idsintaAnggota || null]
           )
         )
       );
     }
-
     // ================= EMAIL USER =================
     try {
       await sendEmail(
