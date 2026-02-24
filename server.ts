@@ -101,16 +101,68 @@ app.post("/api/admin-login", async (req, res) => {
     res.status(500).json({ message: "Login gagal. kenapa ya" });
   }
 });
+// ================= ADMIN ENDPOINT =================
+
+// Daftar semua tabel
+app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
+  try {
+    const tables = Object.values(formTableMap).map(c => c.table);
+    res.json({ tables });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ tables: [] });
+  }
+});
+
+// Ambil data tabel tertentu
+app.get("/api/admin/:table", authMiddleware, async (req, res) => {
+  const { table } = req.params;
+  const { page = 1, limit = 20, search = "" } = req.query;
+  try {
+    if (!Object.values(formTableMap).some(c => c.table === table)) {
+      return res.status(400).json({ data: [] });
+    }
+    const offset = (Number(page) - 1) * Number(limit);
+    const query = `
+      SELECT * FROM ${table} 
+      WHERE COALESCE(nama_ketua, nama, '') ILIKE $1
+      ORDER BY id DESC
+      LIMIT $2 OFFSET $3
+    `;
+    const result = await pool.query(query, [`%${search}%`, limit, offset]);
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ data: [] });
+  }
+});
+
+// Hitung total data untuk pagination
+app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
+  const { table } = req.params;
+  const { search = "" } = req.query;
+  try {
+    if (!Object.values(formTableMap).some(c => c.table === table)) {
+      return res.status(400).json({ total: 0 });
+    }
+    const query = `
+      SELECT COUNT(*) FROM ${table} 
+      WHERE COALESCE(nama_ketua, nama, '') ILIKE $1
+    `;
+    const result = await pool.query(query, [`%${search}%`]);
+    res.json({ total: Number(result.rows[0].count) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ total: 0 });
+  }
+});
 
 // ================= FORM CONFIG =================
 const formTableMap: Record<
   string,
   {
     table: string;
-    mapFn: (row: any, anggota: { name: string; nidn: string }[]) => Record<
-      string,
-      any
-    >;
+    mapFn: (row: any, anggota: { name: string; nidn: string }[]) => Record<string, any>;
     template: string;
     emailSubject: string;
     requiredFields: string[];
