@@ -457,43 +457,42 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
         )
       );
     }
-    // ================= EMAIL USER =================
-    try {
-      await sendEmail(
-        data.email,
-        "Konfirmasi Pengisian Form LPPM",
-        null,
-        "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
-      );
-    } catch (e) {
-      console.error("EMAIL USER ERROR:", e);
-    }
-
-    // ================= EMAIL ADMIN =================
-    try {
-      await sendEmail(
-        "surattugaslppmsmd@gmail.com",
-        `Surat Tugas Baru dari ${data.nama_ketua}`,
-        {
-          filename,
-          content: buffer,
-        },
-        `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
-      );
-    } catch (e) {
-      console.error("EMAIL ADMIN ERROR:", e);
-    }
-
-    // ================= HAPUS FILE TEMP =================
-    if (fs.existsSync(docxPath)) {
-      fs.unlinkSync(docxPath);
-    }
-
-    res.json({
+      res.status(200).json({
       success: true,
       message: "Form berhasil dikirim",
       fileUrl,
       pdfUrl,
+    });
+    // ================= EMAIL USER =================
+    setImmediate(async () => {
+      try {
+        await sendEmail(
+          data.email,
+          "Konfirmasi Pengisian Form LPPM",
+          null,
+          "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+        );
+      } catch (e) {
+        console.error("EMAIL USER ERROR:", e);
+      }
+
+      try {
+        await sendEmail(
+          "surattugaslppmsmd@gmail.com",
+          `Surat Tugas Baru dari ${data.nama_ketua}`,
+          {
+            filename,
+            content: buffer,
+          },
+          `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
+        );
+      } catch (e) {
+        console.error("EMAIL ADMIN ERROR:", e);
+      }
+
+      if (fs.existsSync(docxPath)) {
+        fs.unlinkSync(docxPath);
+      }
     });
 
   } catch (err: any) {
