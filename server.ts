@@ -349,7 +349,9 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     let pdfUrl: string | null = null;
 
     if (uploadedFile) {
-      const pdfName = `${data.nama_ketua}_${Date.now()}_${uploadedFile.originalname}`;
+      const safeName = (data.nama_ketua || "user").replace(/\s+/g, "_");
+
+      const pdfName = `${safeName}_${Date.now()}_${uploadedFile.originalname}`;
 
       const { error: pdfErr } = await supabase.storage
         .from("uploads")
@@ -375,7 +377,11 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     const cols = Object.keys(safeData);
     const vals = Object.values(safeData);
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(",");
+    const allowedTables = Object.values(formTableMap).map(c => c.table);
 
+    if (!allowedTables.includes(config.table)) {
+      throw new Error("Invalid table");
+    }
     const result = await pool.query(
       `INSERT INTO ${config.table} (${cols.join(",")})
        VALUES (${placeholders}) RETURNING id`,
@@ -386,10 +392,14 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
 
     // ================= INSERT ANGGOTA =================
     for (const ag of anggota) {
-      await pool.query(
-        `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn)
-         VALUES ($1,$2,$3,$4)` ,
-        [config.table, id, ag.name || "", ag.nidn || ""]
+      await Promise.all(
+        anggota.map((ag: any) =>
+          pool.query(
+            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn)
+            VALUES ($1,$2,$3,$4)`,
+            [config.table, id, ag.name, ag.nidn]
+          )
+        )
       );
     }
 
@@ -421,7 +431,9 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
     }
 
     // ================= HAPUS FILE TEMP =================
-    fs.unlinkSync(docxPath);
+    if (fs.existsSync(docxPath)) {
+      fs.unlinkSync(docxPath);
+    }
 
     res.json({
       success: true,
