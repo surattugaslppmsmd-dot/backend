@@ -457,13 +457,14 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
         )
       );
     }
-      res.status(200).json({
+    res.setHeader("Connection", "close");
+    res.status(200).json({
       success: true,
       message: "Form berhasil dikirim",
       fileUrl,
       pdfUrl,
     });
-    // ================= EMAIL USER =================
+    // ================= EMAIL =================
     setImmediate(async () => {
       try {
         await sendEmail(
@@ -480,18 +481,19 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
         await sendEmail(
           "surattugaslppmsmd@gmail.com",
           `Surat Tugas Baru dari ${data.nama_ketua}`,
-          {
-            filename,
-            content: buffer,
-          },
+          { filename, content: buffer },
           `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
         );
       } catch (e) {
         console.error("EMAIL ADMIN ERROR:", e);
       }
 
-      if (fs.existsSync(docxPath)) {
-        fs.unlinkSync(docxPath);
+      try {
+        if (fs.existsSync(docxPath)) {
+          fs.unlinkSync(docxPath);
+        }
+      } catch (e) {
+        console.error("error:", e);
       }
     });
 
