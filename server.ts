@@ -479,7 +479,6 @@ try {
 }
 
 // ================= RESPONSE =================
-res.setHeader("Connection", "close");
 return res.status(200).json({
   success: true,
   message: "Form berhasil dikirim",
