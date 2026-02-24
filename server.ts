@@ -457,7 +457,9 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
         )
       );
     }
-    try {
+    
+    // ================= EMAIL USER & ADMIN =================
+try {
   await Promise.allSettled([
     sendEmail(
       data.email,
@@ -476,7 +478,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
   console.error("EMAIL ERROR:", e);
 }
 
-// ================= RESPONSE=================
+// ================= RESPONSE =================
 res.setHeader("Connection", "close");
 return res.status(200).json({
   success: true,
