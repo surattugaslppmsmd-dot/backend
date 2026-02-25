@@ -22,11 +22,11 @@ export const config = {
 app.use(
   cors({
     origin: [
+      "http://localhost:5173",
       "https://surattugaslppm.com",
       "https://www.surattugaslppm.com"
     ],
     methods: ["GET", "POST"],
-    credentials: false,
   })
 );
 app.use(express.json({ limit: "10mb" }));
