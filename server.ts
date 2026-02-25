@@ -106,61 +106,123 @@ app.post("/api/admin-login", async (req, res) => {
 });
 // ================= ADMIN ENDPOINT =================
 
-// Daftar semua tabel
-app.get("/api/admin/all-tables", authMiddleware, async (req, res) => {
+// ================= UPDATE STATUS =================
+app.post(
+  "/api/admin/:table/:id/status",
+  authMiddleware,
+  async (req, res) => {
+    const { table, id } = req.params;
+    const { status } = req.body;
+
+    // validasi status
+    if (!["pending", "approved", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Status tidak valid" });
+    }
+
+    // validasi id
+    if (isNaN(Number(id))) {
+      return res.status(400).json({ message: "ID tidak valid" });
+    }
+
+    // validasi table
+    const validTable = Object.values(formTableMap).find(
+      (c) => c.table === table
+    );
+    if (!validTable) {
+      return res.status(400).json({ message: "Tabel tidak valid" });
+    }
+
+    try {
+      await pool.query(
+        `UPDATE ${table}
+         SET status = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [status, Number(id)]
+      );
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("UPDATE STATUS ERROR:", err);
+      return res.status(500).json({ success: false });
+    }
+  }
+);
+// ================= DAFTAR TABEL =================
+app.get("/api/admin/all-tables", authMiddleware, async (_req, res) => {
   try {
-    const tables = Object.values(formTableMap).map(c => c.table);
-    res.json({ tables });
+    const tables = Object.values(formTableMap).map((c) => c.table);
+    return res.json({ tables });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ tables: [] });
+    console.error("GET TABLES ERROR:", err);
+    return res.status(500).json({ tables: [] });
   }
 });
-
-// Ambil data tabel tertentu
+// ================= GET DATA TABEL =================
 app.get("/api/admin/:table", authMiddleware, async (req, res) => {
   const { table } = req.params;
-  const { page = 1, limit = 20, search = "" } = req.query;
+  const { page = "1", limit = "20", search = "" } = req.query;
+
+  const pageNum = Number(page);
+  const limitNum = Number(limit);
+  const offset = (pageNum - 1) * limitNum;
+
+  if (isNaN(pageNum) || isNaN(limitNum)) {
+    return res.status(400).json({ data: [] });
+  }
+
+  if (!Object.values(formTableMap).some((c) => c.table === table)) {
+    return res.status(400).json({ data: [] });
+  }
+
   try {
-    if (!Object.values(formTableMap).some(c => c.table === table)) {
-      return res.status(400).json({ data: [] });
-    }
-    const offset = (Number(page) - 1) * Number(limit);
     const query = `
-      SELECT * FROM ${table} 
+      SELECT *
+      FROM ${table}
       WHERE COALESCE(nama_ketua, nama, '') ILIKE $1
       ORDER BY id DESC
       LIMIT $2 OFFSET $3
     `;
-    const result = await pool.query(query, [`%${search}%`, limit, offset]);
-    res.json({ data: result.rows });
+
+    const result = await pool.query(query, [
+      `%${search}%`,
+      limitNum,
+      offset,
+    ]);
+
+    return res.json({ data: result.rows });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ data: [] });
+    console.error("GET TABLE DATA ERROR:", err);
+    return res.status(500).json({ data: [] });
   }
 });
 
-// Hitung total data untuk pagination
+// ================= COUNT DATA =================
 app.get("/api/admin/:table/count", authMiddleware, async (req, res) => {
   const { table } = req.params;
   const { search = "" } = req.query;
+
+  if (!Object.values(formTableMap).some((c) => c.table === table)) {
+    return res.status(400).json({ total: 0 });
+  }
+
   try {
-    if (!Object.values(formTableMap).some(c => c.table === table)) {
-      return res.status(400).json({ total: 0 });
-    }
     const query = `
-      SELECT COUNT(*) FROM ${table} 
+      SELECT COUNT(*)::int AS total
+      FROM ${table}
       WHERE COALESCE(nama_ketua, nama, '') ILIKE $1
     `;
+
     const result = await pool.query(query, [`%${search}%`]);
-    res.json({ total: Number(result.rows[0].count) });
+
+    return res.json({ total: result.rows[0].total });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ total: 0 });
+    console.error("COUNT ERROR:", err);
+    return res.status(500).json({ total: 0 });
   }
 });
 
-// ================= FORM CONFIG =================
+// FORM CONFIG
 const formTableMap: Record<
   string,
   {
@@ -378,7 +440,7 @@ app.post(
           data.email,
           "Konfirmasi Pengisian Form LPPM",
           null,
-          "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+          "Terima kasih sudah mengisi form,\n\nuntuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
         );
       } catch (e) {
         console.error("EMAIL USER ERROR:", e);
