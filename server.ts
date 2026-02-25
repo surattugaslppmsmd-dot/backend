@@ -326,169 +326,98 @@ const formTableMap: Record<
     requiredFields: ["email", "nama_ketua", "nidn", "judul", "tanggal"],
   },
 };
-app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => {
-  try {
-    const { formType } = req.params;
-    const config = formTableMap[formType];
 
-    if (!config) {
-      return res.status(400).json({
-        success: false,
-        message: "Form tidak valid",
-      });
-    }
+// SubmitFormtype
 
-    let data = req.body;
-
-    // ================= VALIDASI =================
-    for (const field of config.requiredFields) {
-      if (!data[field]) {
-        return res.status(400).json({
-          success: false,
-          message: `Field ${field} wajib diisi`,
-        });
-      }
-    }
-
-    // ================= PARSE ANGGOTA =================
-    let anggota: any[] = [];
+app.post(
+  "/api/submit/:formType",
+  upload.single("pdfFile"),
+  async (req, res) => {
     try {
-      anggota = JSON.parse(data.anggota || "[]");
-    } catch {
-      return res.status(400).json({
-        success: false,
-        message: "Format anggota tidak valid",
-      });
-    }
+      const { formType } = req.params;
+      const config = formTableMap[formType];
 
-    // ================= VALIDASI FILE =================
-    const uploadedFile = req.file;
-
-    if (uploadedFile) {
-      const allowed = [
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ];
-
-      if (!allowed.includes(uploadedFile.mimetype)) {
+      if (!config) {
         return res.status(400).json({
           success: false,
-          message: "File harus PDF atau DOCX",
+          message: "Form tidak valid",
         });
       }
-    }
 
-    // ================= GENERATE DOCX =================
-    const mapped = config.mapFn(data, anggota);
+      const data = req.body;
 
-    const docxPath = await generateDocx(config.template, mapped);
-    const buffer = await fs.promises.readFile(docxPath);
+      // ================= VALIDASI =================
+      for (const field of config.requiredFields) {
+        if (!data[field]) {
+          return res.status(400).json({
+            success: false,
+            message: `Field ${field} wajib diisi`,
+          });
+        }
+      }
 
-    // ================= UPLOAD DOCX =================
-    const filename = `${data.nama_ketua || "user"}_${Date.now()}.docx`;
+      // ================= PARSE ANGGOTA =================
+      let anggota: any[] = [];
+      try {
+        anggota = JSON.parse(data.anggota || "[]");
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: "Format anggota tidak valid",
+        });
+      }
 
-    const { error: uploadErr } = await supabase.storage
-      .from("surat-tugas-files")
-      .upload(filename, buffer, {
-        contentType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      // ================= GENERATE DOCX =================
+      const mapped = config.mapFn(data, anggota);
+      const docxPath = await generateDocx(config.template, mapped);
+      const buffer = await fs.promises.readFile(docxPath);
+
+      // ================= EMAIL USER =================
+      try {
+        await sendEmail(
+          data.email,
+          "Konfirmasi Pengisian Form LPPM",
+          null,
+          "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+        );
+      } catch (e) {
+        console.error("EMAIL USER ERROR:", e);
+      }
+
+      // ================= EMAIL ADMIN =================
+      try {
+        await sendEmail(
+          "surattugaslppmsmd@gmail.com",
+          `Surat Tugas Baru dari ${data.nama_ketua}`,
+          {
+            filename: `${data.nama_ketua || "user"}.docx`,
+            content: buffer,
+          },
+          `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
+        );
+      } catch (e) {
+        console.error("EMAIL ADMIN ERROR:", e);
+      }
+
+      // ================= HAPUS FILE TEMP =================
+      if (fs.existsSync(docxPath)) {
+        fs.unlinkSync(docxPath);
+      }
+
+      // ================= RESPONSE =================
+      return res.status(200).json({
+        success: true,
+        message: "Form berhasil dikirim",
       });
-
-    if (uploadErr) {
-      throw new Error("Upload DOCX gagal");
+    } catch (err: any) {
+      console.error("SUBMIT ERROR:", err);
+      return res.status(500).json({
+        success: false,
+        message: err.message || "Terjadi kesalahan di server",
+      });
     }
-
-    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/surat-tugas-files/${filename}`;
-
-    // ================= UPLOAD PDF (OPTIONAL) =================
-    let pdfUrl: string | null = null;
-
-    if (uploadedFile) {
-      const safeName = (data.nama_ketua || "user").replace(/\s+/g, "_");
-
-      const pdfName = `${safeName}_${Date.now()}_${uploadedFile.originalname}`;
-
-      const { error: pdfErr } = await supabase.storage
-        .from("uploads")
-        .upload(pdfName, uploadedFile.buffer, {
-          contentType: uploadedFile.mimetype,
-        });
-
-      if (!pdfErr) {
-        pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${pdfName}`;
-      }
-    }
-
-    // ================= INSERT DB =================
-    const safeData = {
-      ...data,
-      file_url: fileUrl,
-      pdf_url: pdfUrl,
-      status: "belum_dibaca",
-    };
-
-    delete safeData.anggota;
-
-    const cols = Object.keys(safeData);
-    const vals = Object.values(safeData);
-    const placeholders = cols.map((_, i) => `$${i + 1}`).join(",");
-    const allowedTables = Object.values(formTableMap).map(c => c.table);
-
-    if (!allowedTables.includes(config.table)) {
-      throw new Error("Invalid table");
-    }
-    const result = await pool.query(
-      `INSERT INTO ${config.table} (${cols.join(",")})
-       VALUES (${placeholders}) RETURNING id`,
-      vals
-    );
-
-    const id = result.rows[0].id;
-
-    // insert anggota
-    if (anggota.length > 0) {
-      await Promise.all(
-        anggota.map((ag: any) =>
-          pool.query(
-            `INSERT INTO anggota_surat (surat_type, surat_id, nama, nidn, idsintaanggota)
-            VALUES ($1,$2,$3,$4,$5)`,
-            [config.table, id, ag.name, ag.nidn, ag.idsintaAnggota || null]
-          )
-        )
-      );
-    }
-
-
-    // response
-      res.status(200).json({
-      success: true,
-      message: "Form berhasil dikirim",
-      fileUrl,
-      pdfUrl,
-    });
-    
-    // email ke user
-    sendEmail(data.email, "Konfirmasi Pengisian Form LPPM", null, 
-      "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
-    ).catch(e => console.error("Email Ke User Error", e));
-
-    // email ke admin
-    sendEmail(
-      "surattugaslppmsmd@gmail.com",
-      `Surat Tugas Baru dari ${data.nama_ketua}`,
-      { filename, content: buffer },
-      `Form baru dari ${data.nama_ketua}`
-    ).catch(e => console.error("EMAIL ADMIN ERROR", e));
-
-  } catch (err: any) {
-    console.error("SUBMIT ERROR:", err);
-
-    res.status(500).json({
-      success: false,
-      message: err.message || "Terjadi kesalahan di server",
-    });
   }
-});
+);
 
 // ================= RUN =================
 if (!process.env.VERCEL) {
