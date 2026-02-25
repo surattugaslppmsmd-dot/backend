@@ -445,7 +445,7 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
 
     const id = result.rows[0].id;
 
-    // ================= INSERT ANGGOTA =================
+    // insert anggota
     if (anggota.length > 0) {
       await Promise.all(
         anggota.map((ag: any) =>
@@ -458,6 +458,8 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
       );
     }
 
+
+    // response
       res.status(200).json({
       success: true,
       message: "Form berhasil dikirim",
@@ -465,30 +467,18 @@ app.post("/api/submit/:formType", upload.single("pdfFile"), async (req, res) => 
       pdfUrl,
     });
     
-// ================= EMAIL USER =================
-    setImmediate(async () => {
-      try {
-        await sendEmail(
-          data.email,
-          "Konfirmasi Pengisian Form LPPM",
-          null,
-          "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
-        );
-      } catch (e) {
-        console.error("EMAIL USER ERROR:", e);
-      }
+    // email ke user
+    sendEmail(data.email, "Konfirmasi Pengisian Form LPPM", null, 
+      "Terima kasih sudah mengisi form, untuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+    ).catch(e => console.error("Email Ke User Error", e));
 
-      try {
-        await sendEmail(
-          "surattugaslppmsmd@gmail.com",
-          `Surat Tugas Baru dari ${data.nama_ketua}`,
-          { filename, content: buffer },
-          `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
-        );
-      } catch (e) {
-        console.error("EMAIL ADMIN ERROR:", e);
-      }
-    });
+    // email ke admin
+    sendEmail(
+      "surattugaslppmsmd@gmail.com",
+      `Surat Tugas Baru dari ${data.nama_ketua}`,
+      { filename, content: buffer },
+      `Form baru dari ${data.nama_ketua}`
+    ).catch(e => console.error("EMAIL ADMIN ERROR", e));
 
   } catch (err: any) {
     console.error("SUBMIT ERROR:", err);
