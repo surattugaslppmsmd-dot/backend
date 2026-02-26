@@ -15,7 +15,7 @@ export async function sendEmail(
     service: "gmail",
     auth: {
       user: "surattugaslppmsmd@gmail.com",
-      pass: process.env.GMAIL_APP_PASSWORD, // App password dari Gmail
+      pass: process.env.GMAIL_APP_PASSWORD, 
     },
   });
 

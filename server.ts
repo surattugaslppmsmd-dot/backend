@@ -428,10 +428,19 @@ app.post(
         });
       }
 
-      // ================= GENERATE DOCX =================
+      // DOCX TEMPLATE
       const mapped = config.mapFn(data, anggota);
       const docxPath = await generateDocx(config.template, mapped);
       const buffer = await fs.promises.readFile(docxPath);
+
+      // TANGGAL & HARI
+      const tanggal = new Date();
+      const formatter = new Intl.DateTimeFormat("id-ID", {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+      });
+      const tanggalIndo = formatter.format(tanggal);
 
       // ================= EMAIL USER =================
       try {
@@ -449,7 +458,7 @@ app.post(
       try {
         await sendEmail(
           "surattugaslppmsmd@gmail.com",
-          `Surat Tugas Baru dari ${data.nama_ketua}`,
+          `Surat Tugas Baru Hari ${tanggalIndo}`,
           {
             filename: `${data.nama_ketua || "user"}.docx`,
             content: buffer,
