@@ -34,7 +34,7 @@ app.use(express.urlencoded({ extended: true }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 4 * 1024 * 1024 },
 });
 
 // ================= DATABASE (POSTGRES) =================
@@ -54,7 +54,7 @@ const supabase = createClient(
 
 // ================= JWT =================
 if (!process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET is not defined");
+  throw new Error("isi JWT_SECRET di vercel");
 }
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -73,7 +73,7 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
     (req as any).user = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
-    res.status(401).json({ error: "Invalid token" });
+    res.status(401).json({ error: "Token Tidak tersedia" });
   }
 }
 
@@ -101,12 +101,12 @@ app.post("/api/admin-login", async (req, res) => {
     res.json({ token, expiresIn: 3600 });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: "Login gagal. kenapa ya" });
+    res.status(500).json({ message: "Login gagal. tanya orang nya" });
   }
 });
 // ================= ADMIN ENDPOINT =================
 
-// ================= UPDATE STATUS =================
+// update status
 app.post(
   "/api/admin/:table/:id/status",
   authMiddleware,
@@ -177,8 +177,7 @@ app.get("/api/admin/:table", authMiddleware, async (req, res) => {
 
   try {
     const query = `
-      SELECT *
-      FROM ${table}
+      SELECT * FROM ${table}
       WHERE COALESCE(nama_ketua, nama, '') ILIKE $1
       ORDER BY id DESC
       LIMIT $2 OFFSET $3
@@ -440,7 +439,7 @@ app.post(
           data.email,
           "Konfirmasi Pengisian Form LPPM",
           null,
-          "Terima kasih sudah mengisi form,\n\nuntuk surat hasil form dapat menghubungi Admin LPPM - 085117513399 A.n Novi."
+          "Terima kasih sudah mengisi form,\n\nuntuk surat yang telah di isi dapat menghubungi nomor Admin LPPM 085117513399 an. Novi."
         );
       } catch (e) {
         console.error("EMAIL USER ERROR:", e);
@@ -455,7 +454,7 @@ app.post(
             filename: `${data.nama_ketua || "user"}.docx`,
             content: buffer,
           },
-          `Form baru dari ${data.nama_ketua}, email: ${data.email}.`
+          `Form ${formType} dari ${data.nama_ketua}, email: ${data.email}.`
         );
       } catch (e) {
         console.error("EMAIL ADMIN ERROR:", e);

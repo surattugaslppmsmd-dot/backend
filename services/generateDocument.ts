@@ -41,7 +41,7 @@ export async function generateDocx(
 
   const templatePath = path.join(__dirname, "..", "templates", templateFile);
   if (!fs.existsSync(templatePath)) {
-    throw new Error(`Template file tidak ditemukan: ${templatePath}`);
+    throw new Error(`Mana template ${templatePath} nya ?`);
   }
 
   const content = fs.readFileSync(templatePath, "binary");
@@ -55,7 +55,7 @@ export async function generateDocx(
   try {
     doc.render(data);
   } catch (err) {
-    console.error("Template rendering error:", err);
+    console.error("Error Rendering Template:", err);
     throw err;
   }
 
